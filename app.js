@@ -395,6 +395,21 @@ function drawShadows(t, p) {
 }
 $('shadowbtn').onclick = () => { shadowsOn = !shadowsOn; $('shadowbtn').classList.toggle('on', shadowsOn); $('shadowbtn').setAttribute('aria-pressed', shadowsOn); draw(); };
 
+// Bina verisi gelince piyanoda tuşlar üzerinde kayar gibi: ışınlar doğudan batıya (zaman sırasıyla) tek tek
+// gökkuşağı rengiyle yanar, sonra gerçek renklerine (yeşil/kırmızı) döner
+function rainbow() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const rays = rLayer.getLayers().filter(l => l instanceof L.Polyline && !l.options.dashArray && l.options.weight <= 3); // saat ışınları (çizim sırası = zaman)
+  const n = rays.length, gap = Math.min(45, 900 / Math.max(1, n)), hold = 260, t0 = performance.now();
+  rays.forEach(l => l._final = l.options.color);
+  const step = now => {
+    const t = now - t0;
+    rays.forEach((l, i) => { const on = t >= i * gap && t < i * gap + hold; l.setStyle({ color: on ? `hsl(${i * 300 / Math.max(1, n - 1)} 95% 58%)` : l._final }); });
+    if (t < n * gap + hold) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
 // ---------- binalar ----------
 // Tarayıcıda saklanır (yer dolarsa eski bina önbellekleri silinir); aynı bölgeye dönünce anında gelir.
 async function fetchEls(lat, lng) {
@@ -464,7 +479,7 @@ function autoPick() {
 }
 async function refreshBuildings(force = false, attempt = 0) {
   const id = ++req; // her konum geçişi: bekleyen eski yanıt artık uygulanmaz
-  if (!force && last?.complete && pt.distanceTo([last.lat, last.lng]) < 120) { B = localize(last.el, pt.lat, pt.lng, last.ground); B.ok = true; statB(); drawBuildings(); draw(); return autoPick(); }
+  if (!force && last?.complete && pt.distanceTo([last.lat, last.lng]) < 120) { B = localize(last.el, pt.lat, pt.lng, last.ground); B.ok = true; statB(); drawBuildings(); draw(); autoPick(); return rainbow(); }
   clearTimeout(autoRetry);
   // Çekim merkezi ~100 m'lik ızgaraya oturtulur: önbellek isabeti için; 400 m yarıçap yine de bolca kapsar
   const lat = +pt.lat.toFixed(3), lng = +pt.lng.toFixed(3);
@@ -488,6 +503,7 @@ async function refreshBuildings(force = false, attempt = 0) {
     if (attempt === 0) autoRetry = setTimeout(() => refreshBuildings(true, 1), 8000);
   } else if ($('retry')) $('gstat').textContent = '';
   drawBuildings(); draw(); autoPick();
+  if (B.ok) rainbow();
 }
 function statB() {
   const g = B.buildings.filter(b => b.guessed).length;
@@ -801,3 +817,4 @@ else {
   // izin gerektirmeyen cihazlarda (Android) pusula kendiliğinden açılır; iOS'ta üstteki oka dokunulur
   if (matchMedia('(pointer: coarse)').matches && window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission !== 'function') requestCompass();
 }
+document.documentElement.dataset.ready = '1'; // duman testi (deploy): uygulama sonuna kadar hatasız yüklendi
