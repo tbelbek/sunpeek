@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SunPeek</title>
+<meta name="description" content="See how many hours of direct sun a building facade gets today, in summer and in winter. Shadows from buildings and hills, compass, history.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☀️</text></svg>">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SunPeek">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; font: 14px system-ui, sans-serif; }
+  #map { position: absolute; inset: 0; }
+  #panel { position: absolute; z-index: 1000; top: 10px; right: 10px; width: 300px; max-height: calc(100% - 20px); overflow: auto; box-sizing: border-box;
+           background: #fffe; border-radius: 8px; padding: 10px 12px; box-shadow: 0 2px 10px #0004; }
+  #panel summary { font-size: 16px; font-weight: 700; cursor: pointer; }
+  #panel label { display: block; margin: 6px 0 2px; color: #444; }
+  #panel input[type=text], #panel input[type=date], #panel input[type=number] { width: 100%; box-sizing: border-box; padding: 4px; }
+  #panel input[type=range] { width: 100%; }
+  .row { display: flex; gap: 6px; margin-top: 6px; } .row > * { flex: 1; }
+  button { padding: 6px 4px; cursor: pointer; font-size: 13px; } button.on { background: #ffe600; }
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; } td { padding: 2px 0; } td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .leg { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 4px; }
+  .hrow { display: flex; gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px solid #eee; cursor: pointer; } .hrow > div { flex: 1; }
+  .hrow button { flex: 0 0 36px; min-height: 36px; }
+  .fix { color: #c4211a; font-weight: 700; cursor: pointer; }
+  .muted { color: #666; font-size: 12px; } .st { font-weight: 600; }
+  .lbl { color: #fff; font: 600 12px system-ui; text-shadow: 0 0 3px #000, 0 0 3px #000; white-space: nowrap; }
+  #sky { display: block; width: 190px; height: 190px; margin: 6px auto 0; }
+  #house { margin-top: 8px; padding-top: 6px; border-top: 1px solid #ddd; }
+  #arrow { position: absolute; z-index: 1000; top: 8px; left: 50%; transform: translateX(-50%); background: #fffe; border-radius: 18px; padding: 4px 12px;
+           box-shadow: 0 1px 6px #0005; font-weight: 700; display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  #arrow b { display: inline-block; font-size: 20px; line-height: 20px; color: #1a73e8; transition: transform .2s; }
+  #seasons { position: absolute; z-index: 1000; top: 50px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; max-width: calc(100vw - 12px); overflow-x: auto; scrollbar-width: none; padding: 2px; }
+  #seasons button { min-height: 34px; padding: 4px 8px; border: 0; border-radius: 16px; background: #fffe; box-shadow: 0 1px 4px #0005; font-size: 13px; white-space: nowrap; }
+  #seasons button.on { background: #ffe600; font-weight: 700; }
+  #pickhint { display: none; position: absolute; z-index: 1000; top: 92px; left: 50%; transform: translateX(-50%); background: #222d; color: #fff; padding: 6px 12px; border-radius: 6px; }
+  @media (max-width: 600px) {
+    #map { bottom: 42%; } /* panel haritanın üstünü kapatmasın */
+    body.closed #map { bottom: 52px; } body.closed #panel { height: auto; }
+    button { min-height: 44px; font-size: 15px; }
+    #panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; height: 42%; max-height: none; border-radius: 12px 12px 0 0; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+    #sky { width: 150px; height: 150px; }
+    #seasons button { min-height: 32px; padding: 3px 7px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="arrow" data-t-title="arrowTitle"><b>▲</b><span id="arrowtxt"></span></div>
+<div id="seasons">
+  <button data-s="today" data-t="today"></button><button data-s="spring" data-t="spring"></button><button data-s="summer" data-t="summer"></button>
+  <button data-s="autumn" data-t="autumn"></button><button data-s="winter" data-t="winter"></button><button id="play" data-t-title="playTitle">▶</button>
+</div>
+<div id="pickhint" data-t="pickHint"></div>
+<div id="panel"><details id="sheet" open><summary id="sum">☀️ SunPeek</summary>
+  <div class="row"><button id="geo" data-t="geo"></button><button id="cmp" data-t="cmp"></button><select id="lang" style="flex:0 0 auto" aria-label="Language"></select></div>
+  <div class="row"><button id="pick" data-t="pick"></button><button id="look" disabled data-t="look"></button></div>
+  <div id="pos" class="muted"></div>
+  <svg id="sky" viewBox="-115 -115 230 230"></svg>
+  <div id="rel" class="st" style="text-align:center"></div>
+  <div id="house" style="display:none"></div>
+  <details id="histbox" style="margin-top:8px"><summary class="st"><span data-t="history"></span> (<span id="hcount">0</span>)</summary><div id="hist"></div></details>
+  <label data-t="coordLabel"></label>
+  <div class="row" style="margin-top:0"><input id="coord" type="text" placeholder="51.4779, -0.0015"><button id="go" style="flex:0 0 40px" data-t="go"></button></div>
+  <div class="row">
+    <div><label data-t="date"></label><input id="date" type="date"></div>
+    <div><label><span data-t="floorLabel"></span> <span id="eyeM" class="muted"></span> <span id="katwarn" class="fix" style="display:none">❗</span></label>
+      <div class="row" style="margin-top:0"><input id="kat" type="number" value="0" min="0" step="1"><button id="gpskat" style="flex:0 0 52px" data-t-title="gpsFloorTitle">📡</button></div></div>
+  </div>
+  <div id="katmsg" class="fix" style="display:none;margin-top:4px"></div>
+  <label><span data-t="time"></span> <span id="tval" class="st"></span></label>
+  <input id="time" type="range" min="0" max="1439" step="5">
+  <table>
+    <tr><td data-t="riseSet"></td><td id="riseset"></td></tr>
+    <tr><td data-t="noon"></td><td id="noon"></td></tr>
+    <tr><td data-t="dayLen"></td><td id="len"></td></tr>
+    <tr><td data-t="altAz"></td><td id="altaz"></td></tr>
+  </table>
+  <div id="now" class="st" style="margin-top:6px"></div>
+  <div class="muted" style="margin-top:8px">
+    <span class="leg" style="background:#1ad940"></span><span data-t="lgVis"></span>
+    <span class="leg" style="background:#f7332a;margin-left:6px"></span><span data-t="lgBlock"></span><br>
+    <span class="leg" style="background:#a0522d"></span><span data-t="lgTerrain"></span>
+    <span class="leg" style="background:#ddd;margin-left:6px"></span><span data-t="lgBehind"></span><br>
+    <span class="leg" style="background:#ff9900"></span><span data-t="lgRiseSet"></span>
+    <span class="leg" style="background:#ffe600;margin-left:6px"></span><span data-t="lgSel"></span>
+    <span class="leg" style="background:#4af;margin-left:6px"></span><span data-t="lgHeading"></span><br>
+    <span data-t="note"></span><br>
+    <span id="bstat"></span><br><span id="gstat"></span>
+  </div>
+</details></div>
+<script type="module">
+import { t as tr, lang, LANGS, dirs, applyStatic } from './i18n.js';
+import { zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt } from './sun.js';
+
+const $ = id => document.getElementById(id);
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+const map = L.map('map', { rotate: true, touchRotate: false, rotateControl: false, bearing: 0, zoomControl: false }).setView([51.4779, -0.0015], 17);
+L.control.zoom({ position: 'bottomleft' }).addTo(map); // üstte ok ve mevsim düğmeleri var
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 20, maxNativeZoom: 19, attribution: 'Esri World Imagery · buildings © OpenStreetMap'
+}).addTo(map);
+const bLayer = L.layerGroup().addTo(map), rLayer = L.layerGroup().addTo(map);
+const marker = L.marker([51.4779, -0.0015], { draggable: true }).addTo(map);
+const cone = L.polygon([], { color: '#4af', weight: 1, fillOpacity: 0.25, interactive: false }).addTo(map);
+let acc = null, pt = null, accM = null, gAlt = null, gAltAcc = null, B = { buildings: [], own: [] }, req = 0;
+let last = null; // son çekim: {el, ground, hz, lat, lng} — binalar + zemin kotu + ufuk
+let cmpState = 'off'; // off | asking | waiting | nodata | denied | none — üstteki okta görünür
+let raw = null, heading = null, headAcc = null, compassOn = false, watchId = null, picking = false, house = null, lastRender = 0, rotateOn = true, wake = null;
+let katSrc = null, katFix = null; // katSrc 'gps': kat GPS'ten geldi; katFix: önerilen düzeltme
+let cmpOff = +(localStorage.getItem('cmpOff') || 0); // pusula düzeltmesi (manyetik sapma + cihaz hatası), duvara göre kalibre edilir
+
+let TZ = null; // konumun saat dilimi (Open-Meteo); gelene kadar tarayıcınınki
+const hm = t => t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', timeZone: TZ ?? undefined });
+const pad = n => String(n).padStart(2, '0');
+const dirName = a => dirs[Math.round(a / 45) % 8];
+const dm = md => new Date(2000, +md.slice(0, 2) - 1, +md.slice(3)).toLocaleDateString(lang, { day: 'numeric', month: 'short' });
+// Mevsim tarihleri yarımküreye göre: güneyde Haziran kıştır
+const SEASON = lat => lat < 0 ? { spring: '09-23', summer: '12-21', autumn: '03-20', winter: '06-21' } : { spring: '03-20', summer: '06-21', autumn: '09-23', winter: '12-21' };
+applyStatic();
+for (const [k, v] of Object.entries(LANGS)) $('lang').add(new Option(v, k, false, k === lang));
+$('lang').onchange = () => { localStorage.setItem('lang', $('lang').value); location.reload(); };
+const today = new Date();
+$('date').value = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+$('time').value = today.getHours() * 60 + today.getMinutes();
+const todayStr = $('date').value;
+const ymd = () => $('date').value.split('-').map(Number);
+const timeAt = min => { const [y, m, d] = ymd(); return zoned(y, m, d, min, TZ); };
+const kat = () => Math.max(0, Math.round(parseFloat($('kat').value) || 0));
+const eye = () => 1.5 + kat() * 2.8; // göz/pencere zeminden ~1,5 m, kat yüksekliği ~2,8 m
+const z0 = () => last?.ground ? last.ground(pt.lat, pt.lng) : null; // gözlemcinin zemin kotu (DEM)
+
+// Bir noktadan az yönünde, ekranda ~px piksel uzunluğunda (metreye çevrilmiş) uç nokta. Harita dönse de doğru kalır.
+function dest(from, az, px) {
+  const m = px * 40075016.686 * Math.cos(from.lat * Math.PI / 180) / 2 ** (map.getZoom() + 8), F = frame(from.lat, from.lng);
+  return F.from(Math.sin(az * Math.PI / 180) * m, Math.cos(az * Math.PI / 180) * m);
+}
+function ray(from, az, px, style) { const end = dest(from, az, px); L.polyline([from, end], style).addTo(rLayer); return end; }
+function label(at, text) { L.marker(at, { icon: L.divIcon({ className: 'lbl', html: text, iconSize: null }), interactive: false }).addTo(rLayer); }
+const COL = { vis: '#1ad940', block: '#f7332a', terrain: '#a0522d', behind: '#dddddd' };
+
+// ---------- çizim ----------
+function draw() {
+  if (!pt) return;
+  rLayer.clearLayers();
+  const [y, m, d] = ymd(), ev = dayEvents(pt.lat, pt.lng, y, m, d);
+  const origin = house ? L.latLng(house.lat, house.lon) : pt;
+
+  if (house) { // cephe modu: ışınlar cepheden çıkar
+    house.day = facadeCached($('date').value, () => facadeDay(house.env, house, eye(), y, m, d, 5, TZ));
+    for (const s of house.day.slots) { const lt = hmIn(s.t, TZ); if (lt.m % 30) continue;
+      const full = lt.m === 0, end = ray(origin, s.az, full ? 150 : 120, { color: COL[s.state], weight: full ? 3 : 2, opacity: s.state === 'behind' ? 0.5 : 0.85 });
+      if (full) label(end, lt.h);
+    }
+  } else {
+    const state = obsState;
+    const t0 = ev.sunrise ?? (ev.polar === 'day' ? timeAt(0) : null), t1 = ev.sunset ?? (ev.polar === 'day' ? timeAt(1440) : null);
+    if (t0 && t1) for (let t = new Date(Math.ceil(t0 / 1800000) * 1800000); t <= t1; t = new Date(+t + 1800000)) {
+      const p = sunpos(pt.lat, pt.lng, t);
+      if (p.alt <= 0) continue;
+      const lt = hmIn(t, TZ), full = lt.m === 0;
+      const end = ray(pt, p.az, full ? 150 : 120, { color: COL[state(p.alt, p.az)], weight: full ? 3 : 2, opacity: full ? 0.9 : 0.6 });
+      if (full) label(end, lt.h);
+    }
+  }
+  for (const [t, sym] of [[ev.sunrise, '↑'], [ev.sunset, '↓']]) if (t)
+    label(ray(origin, sunpos(pt.lat, pt.lng, t).az, 190, { color: '#ff9900', weight: 3, dashArray: '6 6' }), sym + hm(t));
+
+  // Seçili saat
+  const t = timeAt(+$('time').value), p = sunpos(origin.lat, origin.lng, t);
+  $('tval').textContent = hm(t);
+  $('altaz').textContent = `${p.alt.toFixed(1)}° · ${p.az.toFixed(0)}° ${dirName(p.az)}`;
+  if (p.alt > 0) ray(origin, p.az, 230, { color: '#ffe600', weight: 5 });
+  let st;
+  if (p.alt <= 0) st = [tr('belowHorizon'), '#555'];
+  else if (house) {
+    const s = house.day.slots.find(s => Math.abs(s.t - t) <= 150000)?.state ?? 'behind'; // 5 dk'lık dilim
+    st = { vis: [tr('fVis'), '#119a2e'], block: [tr('fBlock'), '#c4211a'], terrain: [tr('fTerrain'), '#8a4520'], behind: [tr('fBehind'), '#666'] }[s];
+  } else st = { vis: [tr('oVis'), '#119a2e'], block: [tr('oBlock'), '#c4211a'], terrain: [tr('oTerrain'), '#8a4520'] }[obsState(p.alt, p.az)];
+  $('now').textContent = st[0]; $('now').style.color = st[1];
+  $('sum').textContent = st[0] + (house ? ` · ${$('date').value === todayStr ? tr('todayLower') : dm(`${pad(m)}-${pad(d)}`)} ${tr('hours', { h: house.day.visH.toFixed(1) })}` : '');
+  $('eyeM').textContent = `≈ ${eye().toFixed(1)} m`;
+  checkKat();
+
+  const polar = { day: tr('polarDay'), night: tr('polarNight') }[ev.polar];
+  $('riseset').textContent = ev.sunrise && ev.sunset ? `${hm(ev.sunrise)} / ${hm(ev.sunset)}` : polar ?? '—';
+  $('noon').textContent = ev.noon ? `${hm(ev.noon)} · ${ev.maxAlt.toFixed(1)}°` : '—';
+  const len = ev.sunrise && ev.sunset ? (ev.sunset - ev.sunrise) / 60000 : ev.polar === 'day' ? 1440 : ev.polar ? 0 : null;
+  $('len').textContent = len == null ? '—' : tr('dayLenFmt', { h: Math.floor(len / 60), m: Math.round(len % 60) });
+  drawHouse(); drawHeading();
+}
+
+// Kat, binanın kat sayısıyla uyuşuyor mu? Cephe seçiliyse o bina, değilse içinde durduğun bina (en yüksek parça).
+// Uymuyorsa kat alanının yanında ❗ ve dokununca uygulanan öneri.
+function checkKat() {
+  const own = B.own.reduce((a, b) => !a || b.h > a.h ? b : a, null), b = house ?? own, k = kat(), gps = katSrc === 'gps';
+  let msg = ''; katFix = null;
+  if (b) {
+    const mx = maxFloor(b);
+    if (k > mx) {
+      katFix = mx;
+      msg = tr('kTooHigh', { k, which: tr(house ? 'whichSel' : 'whichOwn'), n: mx + 1, est: b.levels == null ? tr('estFromHeight') : '', mx }) +
+        (gps ? tr(k - mx >= 8 ? 'gpsEllipsoid' : 'gpsOff') : '');
+    }
+  } else if (gps && k > 0) {
+    katFix = 0; msg = tr('notInside', { k });
+  }
+  $('katwarn').style.display = $('katmsg').style.display = msg ? '' : 'none';
+  $('katmsg').textContent = msg;
+}
+
+// Gözlemcinin bulunduğu nokta için güneş durumu: tepe (ufuk) ya da bina kesiyor mu?
+function obsState(alt, az) {
+  if (last?.hz && z0() != null && alt < horizonAlt(last.hz, az, z0() + eye())) return 'terrain';
+  return blocked(B.buildings, alt, az, eye()) ? 'block' : 'vis';
+}
+// Cephe hesabı ağır (3 gün × 288 dilim): tarih+kat değişmedikçe yeniden hesaplama
+function facadeCached(key, fn) { key += '|' + kat() + '|' + TZ; return (house.cache[key] ??= fn()); }
+
+function drawHouse() {
+  const el = $('house');
+  if (!house) { el.style.display = 'none'; return; }
+  const [y] = ymd(), fmt = r => r.windows.map(([a, b]) => `${hm(a)}–${hm(b)}`).join(', ') || tr('none');
+  const row = (name, r) => `<tr><td>${name}</td><td>${tr('hours', { h: r.visH.toFixed(1) })}</td></tr><tr><td colspan="2" class="muted" style="text-align:left">${fmt(r)}</td></tr>`;
+  const S = SEASON(house.lat), on = md => { const [mm, dd] = md.split('-').map(Number); return facadeCached(`${y}-${md}`, () => facadeDay(house.env, house, eye(), y, mm, dd, 5, TZ)); };
+  const sum = on(S.summer), win = on(S.winter);
+  el.style.display = '';
+  saveHist({ day: house.day, sum, win, fmt });
+  el.innerHTML = `<div class="st">${tr('facadeHdr', { az: house.az.toFixed(0), dir: dirName(house.az) })}</div>
+    <div class="muted">${tr('facadeSub', { h: house.h.toFixed(0), est: house.guessed ? tr('estimated') : '', k: kat(), e: eye().toFixed(1) })}</div>
+    <table>${row(tr('selDay'), house.day)}${row(tr('summerSol', { d: dm(S.summer) }), sum)}${row(tr('winterSol', { d: dm(S.winter) }), win)}</table>
+    <div class="row"><button id="unpick">${tr('unpick')}</button>${compassOn ? `<button id="calib">${tr('calib')}</button>` : ''}</div>
+    ${compassOn ? `<div class="muted">${tr('calibHelp', { c: (cmpOff >= 0 ? '+' : '') + cmpOff.toFixed(0) })}</div>` : ''}`;
+  $('unpick').onclick = () => { house = null; drawBuildings(); draw(); };
+  if ($('calib')) $('calib').onclick = () => { // duvara bakan telefonun gerçek yönü = cephe yönü + 180°
+    if (raw == null) return;
+    cmpOff = ((house.az + 180 - raw + 540) % 360) - 180; localStorage.setItem('cmpOff', cmpOff); heading = null;
+    $('gstat').textContent = tr('calibSaved', { c: cmpOff.toFixed(0) }); drawHouse();
+  };
+}
+
+// ---------- geçmiş (tarama yapılan binalar) ----------
+// Telefonda saklanır (localStorage). iOS Safari 7 gün girilmeyen sitenin verisini silebilir: kalıcılık istenir;
+// ana ekrana eklenen site bundan muaf.
+navigator.storage?.persist?.().catch(() => {});
+const HKEY = 'gecmis', HMAX = 200;
+const hist = () => { try { return JSON.parse(localStorage.getItem(HKEY) || '[]'); } catch { return []; } };
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function putHist(list) { localStorage.setItem(HKEY, JSON.stringify(list.slice(0, HMAX))); renderHist(); }
+// Seçili cephenin son sonuçlarını yaz; aynı bina+cephe varsa günceller ve başa alır.
+function saveHist({ day, sum, win, fmt }) {
+  const key = `${house.id}:${Math.round(house.az)}`, list = hist(), old = list.find(e => e.key === key);
+  if (old && old.kat === kat() && old.date === $('date').value && old.todayH === day.visH && list[0] === old) return; // değişiklik yok (saat kaydırıcısı)
+  const e = { key, lat: house.lat, lon: house.lon, az: house.az, h: house.h, guessed: house.guessed, kat: kat(), date: $('date').value,
+    todayH: day.visH, today: fmt(day), summerH: sum.visH, summer: fmt(sum), winterH: win.visH, winter: fmt(win), addr: old?.addr ?? null, savedAt: new Date().toISOString() };
+  putHist([e, ...list.filter(x => x.key !== key)]);
+  if (!e.addr) lookupAddr(e);
+}
+// Nominatim: kayıt başına tek istek (kullanım politikası ≤1/sn, toplu sorgu yok)
+async function lookupAddr(e) {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=${lang}&lat=${e.lat}&lon=${e.lon}`, { signal: AbortSignal.timeout(10000) });
+    const a = (await r.json()).address ?? {};
+    const addr = [[a.road, a.house_number].filter(Boolean).join(' '), a.city ?? a.town ?? a.village ?? a.suburb].filter(Boolean).join(', ');
+    if (addr) putHist(hist().map(x => x.key === e.key ? { ...x, addr } : x));
+  } catch {}
+}
+function renderHist() {
+  const list = hist();
+  $('hcount').textContent = list.length;
+  $('hist').innerHTML = list.map((e, i) => `<div class="hrow" data-i="${i}"><div><b>${esc(e.addr ?? `${e.lat.toFixed(5)}, ${e.lon.toFixed(5)}`)}</b>
+      <div class="muted">${tr('histFacade', { dir: dirName(e.az), az: Math.round(e.az), k: e.kat, h: Math.round(e.h), est: e.guessed ? tr('estimated') : '' })}</div>
+      <div class="muted">${esc(tr('histHours', { date: e.date, t: e.todayH.toFixed(1), s: e.summerH.toFixed(1), sw: e.summer, w: e.winterH.toFixed(1), ww: e.winter }))}</div>
+      <div class="muted">${new Date(e.savedAt).toLocaleString(lang, { dateStyle: 'short', timeStyle: 'short' })}</div></div>
+      <button data-del="${i}" title="${tr('del')}">✕</button></div>`).join('') +
+    (list.length ? `<div class="row"><button id="hclear">${tr('clearAll')}</button></div>` : `<div class="muted">${tr('histEmpty')}</div>`);
+  $('hclear')?.addEventListener('click', () => { if (confirm(tr('confirmClear'))) putHist([]); });
+}
+$('hist').onclick = ev => {
+  const del = ev.target.closest('[data-del]'), row = ev.target.closest('.hrow');
+  if (del) { const l = hist(); l.splice(+del.dataset.del, 1); putHist(l); return; }
+  if (!row) return;
+  const e = hist()[+row.dataset.i]; // dokun: oraya git, katı geri yükle; sonuçlar satırda
+  $('kat').value = e.kat; katSrc = null; house = null; drawBuildings();
+  setPoint(e.lat, e.lon); map.setView([e.lat, e.lon], 18);
+};
+renderHist();
+
+// Gökyüzü: merkez tepe noktası, kenar ufuk. Pusula açıkken yukarısı baktığın yön.
+function drawSky() {
+  if (!pt) return;
+  const rot = compassOn && heading != null ? heading : 0, R = 100;
+  const P = (alt, az) => { const r = (90 - Math.max(alt, 0)) / 90 * R, a = (az - rot) * Math.PI / 180; return [r * Math.sin(a), -r * Math.cos(a)]; };
+  const o = house ? { lat: house.lat, lng: house.lon } : pt;
+  let s = `<circle r="${R}" fill="#123" stroke="#999"/><circle r="${R * 2 / 3}" fill="none" stroke="#fff3"/><circle r="${R / 3}" fill="none" stroke="#fff3"/>`;
+  if (house) { // cephe çizgisi; güneşin cepheye vuramadığı yarım gri
+    const a = (house.az - rot) * Math.PI / 180, ux = Math.cos(a) * R, uy = Math.sin(a) * R;
+    s += `<path d="M${-ux},${-uy} A${R},${R} 0 0 0 ${ux},${uy}Z" fill="#9999"/><line x1="${-ux}" y1="${-uy}" x2="${ux}" y2="${uy}" stroke="#0ef" stroke-width="3"/>`;
+  }
+  if (last?.hz && z0() != null) { // tepeler: ufuk profili ile ufuk çemberi arası kahverengi
+    const hp = []; for (let a = 0; a < 360; a += 5) hp.push(P(horizonAlt(last.hz, a, z0() + eye()), a).map(v => v.toFixed(1)).join(','));
+    s += `<path d="M${hp.join('L')}Z M${R},0 A${R},${R} 0 1 0 ${-R},0 A${R},${R} 0 1 0 ${R},0Z" fill-rule="evenodd" fill="#a0522dcc"/>`;
+  }
+  for (const az of [0, 90, 180, 270]) { const [x, y] = P(-8, az).map(v => v * 1.08); s += `<text x="${x}" y="${y + 4}" fill="${az ? '#fff' : '#f55'}" font-size="12" text-anchor="middle" font-weight="700">${dirs[az / 45]}</text>`; }
+  const pts = [], [y, m, d] = ymd();
+  for (let k = 0; k <= 1440; k += 10) {
+    const t = zoned(y, m, d, k, TZ), p = sunpos(o.lat, o.lng, t);
+    if (p.alt > 0) { const [x, yy] = P(p.alt, p.az); pts.push(`${x.toFixed(1)},${yy.toFixed(1)}`); if (k % 120 === 0) s += `<text x="${x}" y="${yy - 4}" fill="#ffd" font-size="9" text-anchor="middle">${k / 60}</text>`; }
+  }
+  if (pts.length) s += `<polyline points="${pts.join(' ')}" fill="none" stroke="#fc0" stroke-width="2"/>`;
+  const p = sunpos(o.lat, o.lng, timeAt(+$('time').value));
+  if (p.alt > 0) { const [x, yy] = P(p.alt, p.az); s += `<circle cx="${x}" cy="${yy}" r="8" fill="#ffe600" stroke="#000"/>`; }
+  if (compassOn && heading != null) s += `<path d="M0,${-R + 1} l-7,-12 h14z" fill="#4af"/>`;
+  $('sky').innerHTML = s;
+
+  // Güneş, baktığın yöne göre şu an nerede?
+  const live = sunpos(o.lat, o.lng, new Date());
+  if (!compassOn || heading == null) $('rel').textContent = '';
+  else if (live.alt <= 0) $('rel').textContent = tr('relBelow');
+  else { const dd = ((live.az - heading + 540) % 360) - 180, d = Math.abs(dd).toFixed(0);
+    $('rel').textContent = tr('relFmt', { where: Math.abs(dd) < 5 ? tr('relFront') : tr(dd > 0 ? 'relRight' : 'relLeft', { d }), alt: live.alt.toFixed(0) }); }
+}
+
+function drawHeading() {
+  const zg = pt && z0();
+  $('pos').textContent = pt ? `📍 ${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}${accM ? ` (±${Math.round(accM)} m)` : ''}` + (TZ ? ` · 🕒 ${TZ}` : '') +
+    (zg != null ? ' · ' + tr('ground', { z: zg.toFixed(0) }) : '') + (gAlt != null ? ' · ' + tr('gpsAlt', { a: gAlt.toFixed(0) }) + (gAltAcc ? ` ±${Math.round(gAltAcc)}` : '') : '') +
+    (heading != null ? ` · 🧭 ${heading.toFixed(0)}° ${dirName(heading)}${headAcc > 0 ? ` (±${Math.round(headAcc)}°)` : ''}` : '') : '';
+  const live = compassOn && heading != null;
+  if (live && pt) cone.setLatLngs([pt, dest(pt, heading - 15, 90), dest(pt, heading, 100), dest(pt, heading + 15, 90)]); else cone.setLatLngs([]);
+  map.setBearing(live && rotateOn ? -heading : 0);
+  // Üstteki ok: yön-yukarı modunda ok sabit (baktığın yön), kuzey-yukarı modunda baktığın yöne döner
+  $('arrow').querySelector('b').style.transform = `rotate(${live && !rotateOn ? heading : 0}deg)`;
+  $('arrowtxt').textContent = live ? `${heading.toFixed(0)}° ${dirName(heading)}${rotateOn ? '' : ` · ${dirs[0]}↑`}` :
+    tr({ off: 'aOff', asking: 'aAsking', waiting: 'aWaiting', nodata: 'aNodata', denied: 'aDenied', none: 'aNone' }[cmpState] ?? 'north');
+  drawSky();
+}
+
+function drawBuildings() {
+  bLayer.clearLayers();
+  for (const b of B.buildings.concat(B.own)) if (Math.hypot(b.cx, b.cy) < 200) // telefonda hız: yalnız yakındakiler çizilir
+    L.polygon(b.geom.map(g => [g.lat, g.lon]), { color: '#fff', weight: 1, fill: false, dashArray: b.guessed ? '3 3' : null, interactive: false }).addTo(bLayer);
+  if (house) L.polyline(house.edge, { color: '#00e5ff', weight: 6 }).addTo(bLayer);
+}
+
+// ---------- binalar ----------
+// Tarayıcıda saklanır (yer dolarsa eski bina önbellekleri silinir); aynı bölgeye dönünce anında gelir.
+async function fetchEls(lat, lng) {
+  const key = `ov:${lat},${lng}`, hit = localStorage.getItem(key);
+  if (hit) return JSON.parse(hit);
+  const el = await fetchOverpass(lat, lng), txt = JSON.stringify(el);
+  for (let i = 0; i < 2; i++) try { localStorage.setItem(key, txt); break; }
+    catch { Object.keys(localStorage).filter(k => k.startsWith('ov:')).forEach(k => localStorage.removeItem(k)); }
+  return el;
+}
+async function fetchOverpass(lat, lng) {
+  const a = `around:400,${lat},${lng}`; // kış güneşi alçak: 30 m bina ~340 m'ye gölge düşürür
+  const q = `[out:json][timeout:60];(way(${a})["building"];way(${a})["building:part"];relation(${a})["building"];);out tags geom;`;
+  let err;
+  for (const url of OVERPASS) { // ana sunucu yavaş (30+ sn) ya da 429/502/504 verebilir, sırayla aynalar
+    try {
+      const r = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: q }), signal: AbortSignal.timeout(url === OVERPASS[0] ? 60000 : 30000) });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return (await r.json()).elements;
+    } catch (e) { err = e; }
+  }
+  throw err;
+}
+// Open-Meteo yükseklik API'si (Copernicus GLO-90), 100 noktalık parçalar halinde.
+// Sonuç tarayıcıda saklanır (aynı yere tekrar gelince istek yok); 429'da bekleyip tekrar dener.
+async function fetchElev(pts, key) {
+  const hit = key && localStorage.getItem(key);
+  if (hit) return JSON.parse(hit);
+  const out = [];
+  for (let i = 0; i < pts.length; i += 100) {
+    const c = pts.slice(i, i + 100), url = `https://api.open-meteo.com/v1/elevation?latitude=${c.map(p => p[0].toFixed(5))}&longitude=${c.map(p => p[1].toFixed(5))}`;
+    for (let k = 0; ; k++) {
+      const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+      if (r.ok) { out.push(...(await r.json()).elevation); break; }
+      if (r.status !== 429 || k === 2) throw new Error('elevation HTTP ' + r.status);
+      await new Promise(res => setTimeout(res, 3000 * (k + 1)));
+    }
+  }
+  if (key) try { localStorage.setItem(key, JSON.stringify(out)); } catch {}
+  return out;
+}
+// Son çekimin merkezinden 120 m içindeysek aynı veriyi yeni noktaya göre yeniden hesapla (yürürken her adımda çekme).
+async function refreshBuildings() {
+  if (last && pt.distanceTo([last.lat, last.lng]) < 120) { B = localize(last.el, pt.lat, pt.lng, last.ground); statB(); drawBuildings(); return draw(); }
+  // Çekim merkezi ~100 m'lik ızgaraya oturtulur: önbellek isabeti için; 400 m yarıçap yine de bolca kapsar
+  const id = ++req, lat = +pt.lat.toFixed(3), lng = +pt.lng.toFixed(3);
+  $('bstat').textContent = tr('loading');
+  // Ufuk ~100 m'lik ızgaraya oturtulur: 600 m+ uzaklıkta fark yok, yakın yerlere dönünce önbellekten gelir
+  const hlat = +lat.toFixed(3), hlng = +lng.toFixed(3);
+  const [el, gr, hz] = await Promise.allSettled([fetchEls(lat, lng), fetchElev(gridPoints(lat, lng), `zg:${lat.toFixed(4)},${lng.toFixed(4)}`),
+    fetchElev(horizonPoints(hlat, hlng), `hz:${hlat},${hlng}`)]);
+  if (id !== req) return;
+  last = { el: el.value ?? [], ground: gr.value ? makeGround(lat, lng, gr.value) : null, hz: hz.value ? makeHorizon(hz.value) : null, lat, lng };
+  B = localize(last.el, pt.lat, pt.lng, last.ground); statB();
+  if (el.status === 'rejected') $('bstat').textContent = tr('bFail', { e: el.reason.message });
+  if (!last.ground) $('bstat').textContent += tr('gFail', { e: gr.reason.message });
+  if (!last.hz) $('bstat').textContent += tr('hFail', { e: hz.reason.message });
+  drawBuildings(); draw();
+}
+function statB() {
+  const g = B.buildings.filter(b => b.guessed).length;
+  $('bstat').textContent = tr('bStat', { n: B.buildings.length, p: Math.round(100 * g / Math.max(1, B.buildings.length)) }) +
+    (B.own.length ? tr('bOwn') : '.') + (last?.ground ? tr('slopeOn') : '') + (last?.hz ? tr('hillsOn') : '');
+}
+
+// ---------- ev seçimi ----------
+function setHouse(e) {
+  if (!e) { $('gstat').textContent = tr('noEdge'); return; }
+  const F = frame(pt.lat, pt.lng), [lat, lon] = F.from(e.x, e.y), r = e.b.ring;
+  house = { lat, lon, az: e.az, id: e.b.id, h: e.b.h, levels: e.b.levels, guessed: e.b.guessed, env: last, cache: {}, edge: [F.from(...r[e.i]), F.from(...r[(e.i + 1) % r.length])] };
+  $('gstat').textContent = tr('facadePicked');
+  drawBuildings(); draw();
+}
+$('pick').onclick = () => { picking = !picking; $('pick').classList.toggle('on', picking); $('pickhint').style.display = picking ? 'block' : 'none'; };
+$('look').onclick = () => {
+  if (heading == null || !last) return;
+  setHouse(rayEdge(B.buildings, heading)); // pusula ±15° şaşabilir: sonuç vurgulanır, gerekirse dokunarak düzeltilir
+};
+
+// ---------- konum ----------
+function setPoint(lat, lng, pan = true) {
+  pt = L.latLng(lat, lng);
+  marker.setLatLng(pt);
+  $('coord').value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  if (pan) map.setView(pt, Math.max(map.getZoom(), 17));
+  draw(); refreshBuildings(); fetchTZ(lat, lng);
+}
+// Konumun saat dilimi (Open-Meteo, ~10 km ızgarada önbellekli). Başarısızsa tarayıcının saat dilimi kalır.
+let timeTouched = false;
+async function fetchTZ(lat, lng) {
+  const key = `tz:${lat.toFixed(1)},${lng.toFixed(1)}`;
+  let tz = localStorage.getItem(key);
+  if (!tz) try {
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lng.toFixed(3)}&timezone=auto&forecast_days=1&daily=sunrise`, { signal: AbortSignal.timeout(10000) });
+    tz = (await r.json()).timezone; if (tz) localStorage.setItem(key, tz);
+  } catch { return; }
+  if (!tz || tz === TZ) return;
+  try { new Intl.DateTimeFormat('en', { timeZone: tz }); } catch { return; } // tarayıcı tanımıyorsa
+  TZ = tz;
+  if (!timeTouched && $('date').value === todayStr) { const x = hmIn(new Date(), TZ); $('time').value = x.h * 60 + x.m; }
+  draw();
+}
+function gotPos(pos, pan) {
+  const { latitude, longitude, accuracy, altitude, altitudeAccuracy } = pos.coords;
+  accM = accuracy; gAlt = altitude; gAltAcc = altitudeAccuracy;
+  if (acc) acc.remove();
+  acc = L.circle([latitude, longitude], { radius: accuracy, color: '#4af', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(map);
+  $('gstat').textContent = tr('gotPos', { a: Math.round(accuracy) });
+  setPoint(latitude, longitude, pan);
+}
+function locate() {
+  if (!navigator.geolocation) { $('gstat').textContent = tr('noGeo'); return; }
+  $('gstat').textContent = tr('askingPos');
+  navigator.geolocation.getCurrentPosition(p => gotPos(p, true), err => {
+    $('gstat').textContent = tr('posFail', { e: err.message });
+    if (!pt) setPoint(51.4779, -0.0015);
+  }, { enableHighAccuracy: true, timeout: 15000 });
+}
+
+// ---------- pusula ----------
+function onOrient(e) {
+  let h = e.webkitCompassHeading; // iOS: kuzeyden saat yönü
+  if (h == null) { if (!(e.absolute || e.type === 'deviceorientationabsolute') || e.alpha == null) return; h = 360 - e.alpha; }
+  h = (h + (screen.orientation?.angle ?? 0) + 360) % 360;
+  headAcc = e.webkitCompassAccuracy ?? null; cmpState = 'live';
+  // Alçak geçiren süzgeç (359→0 sarmasını doğru ele alır); ekranı ~5 Hz güncelle
+  raw = raw == null ? h : (raw + 0.25 * (((h - raw + 540) % 360) - 180) + 360) % 360;
+  heading = (raw + cmpOff + 360) % 360;
+  if (performance.now() - lastRender > 200) { lastRender = performance.now(); drawHeading(); }
+}
+// iOS izni yalnızca bir dokunuşun içinde istenebilir; Android/diğerlerinde izin gerekmez.
+function requestCompass() {
+  if (compassOn || cmpState === 'asking') return;
+  const D = window.DeviceOrientationEvent;
+  if (!D) { cmpState = 'none'; $('gstat').textContent = tr('noCompass'); return drawHeading(); }
+  if (typeof D.requestPermission !== 'function') return compassStart();
+  cmpState = 'asking'; drawHeading();
+  D.requestPermission().then(r => {
+    if (r === 'granted') return compassStart();
+    cmpState = 'denied'; drawHeading();
+    $('gstat').textContent = tr('cmpDenied');
+  }).catch(e => { cmpState = 'off'; drawHeading(); $('gstat').textContent = tr('cmpErr', { e: e.message }); });
+}
+function compassStart() {
+  compassOn = true; cmpState = 'waiting'; $('cmp').classList.add('on'); $('look').disabled = false;
+  navigator.wakeLock?.request('screen').then(w => wake = w).catch(() => {}); // sahada ekran kararmasın
+  drawHouse(); // kalibrasyon düğmesi
+  // İkisini de dinle: Android Chrome 'absolute' verir, iOS ve bazı Android'ler düz 'deviceorientation' (onOrient mutlak olmayanı eler)
+  window.addEventListener('deviceorientationabsolute', onOrient); window.addEventListener('deviceorientation', onOrient);
+  drawHeading();
+  setTimeout(() => { if (compassOn && heading == null) { cmpState = 'nodata'; drawHeading(); $('gstat').textContent = tr('cmpNoData'); } }, 3000);
+  // Yürürken konumu izle ve haritayı takip et
+  if (navigator.geolocation) watchId = navigator.geolocation.watchPosition(p => { gotPos(p, false); map.panTo(pt); }, () => {}, { enableHighAccuracy: true });
+}
+function compassStop() {
+  compassOn = false; cmpState = 'off'; heading = null; raw = null; wake?.release(); wake = null; $('cmp').classList.remove('on'); $('look').disabled = true;
+  window.removeEventListener('deviceorientationabsolute', onOrient); window.removeEventListener('deviceorientation', onOrient);
+  if (watchId != null) navigator.geolocation.clearWatch(watchId); // pil: izlemeyi bırak
+  watchId = null; drawHeading(); drawHouse();
+}
+$('cmp').onclick = () => compassOn ? compassStop() : requestCompass();
+// Üstteki ok: pusula kapalıysa açar; açıksa yön-yukarı ↔ kuzey-yukarı
+$('arrow').onclick = () => { if (!compassOn) return requestCompass(); rotateOn = !rotateOn; drawHeading(); };
+// Telefonda pusula kendiliğinden açılır: izin gerekmiyorsa hemen, iOS'ta ilk dokunuşta (izin bir dokunuş içinde istenmeli)
+if (matchMedia('(pointer: coarse)').matches && window.DeviceOrientationEvent) {
+  if (typeof DeviceOrientationEvent.requestPermission !== 'function') requestCompass();
+  else document.addEventListener('click', () => { if (cmpState === 'off') requestCompass(); }, { capture: true, once: true });
+}
+document.addEventListener('visibilitychange', () => { if (compassOn && document.visibilityState === 'visible') navigator.wakeLock?.request('screen').then(w => wake = w).catch(() => {}); });
+$('sheet').ontoggle = () => { document.body.classList.toggle('closed', !$('sheet').open); map.invalidateSize(); };
+$('gpskat').onclick = () => {
+  if (gAlt == null) { $('gstat').textContent = tr('noGpsAlt'); return; }
+  if (z0() == null) { $('gstat').textContent = tr('noGround'); return; }
+  const k = Math.max(0, Math.round((gAlt - z0() - 1.5) / 2.8));
+  $('kat').value = k; katSrc = 'gps'; draw();
+  $('gstat').textContent = tr('gpsFloor', { a: gAlt.toFixed(0), acc: gAltAcc ? ` (±${Math.round(gAltAcc)})` : '', z: z0().toFixed(0), k });
+};
+
+// ---------- olaylar ----------
+$('geo').onclick = locate;
+$('go').onclick = () => {
+  const m = $('coord').value.match(/(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)/);
+  if (m && Math.abs(+m[1]) <= 90 && Math.abs(+m[2]) <= 180) setPoint(+m[1], +m[2]);
+  else alert(tr('badCoord'));
+};
+$('coord').onkeydown = e => { if (e.key === 'Enter') $('go').click(); };
+map.on('click', e => {
+  if (!picking) return setPoint(e.latlng.lat, e.latlng.lng, false);
+  picking = false; $('pick').classList.remove('on'); $('pickhint').style.display = 'none';
+  if (!last) return;
+  const [x, y] = frame(pt.lat, pt.lng).to(e.latlng.lat, e.latlng.lng);
+  setHouse(pickEdge(B.buildings.concat(B.own), x, y));
+});
+marker.on('dragend', () => { const p = marker.getLatLng(); setPoint(p.lat, p.lng, false); });
+map.on('zoomend', draw);
+for (const id of ['date', 'time']) $(id).oninput = () => { if (id === 'time') timeTouched = true; draw(); };
+
+// ---------- mevsim simülasyonu ----------
+// Haritadaki düğmeler: tarihi ekinoks/gündönümüne alır (ışınlar, gölgeler, cephe saatleri o güne göre); ▶ günü oynatır.
+// Mevsim → tarih, bulunulan yarımküreye göre (güneyde "Yaz" = 21 Aralık)
+const seasonDate = k => k === 'today' ? todayStr : $('date').value.slice(0, 5) + SEASON(pt?.lat ?? 1)[k];
+function seasonMark() { for (const b of $('seasons').querySelectorAll('[data-s]')) b.classList.toggle('on', $('date').value === seasonDate(b.dataset.s)); }
+$('seasons').onclick = e => {
+  const b = e.target.closest('[data-s]');
+  if (!b) return;
+  $('date').value = seasonDate(b.dataset.s);
+  seasonMark(); draw();
+};
+let playT = null;
+function stopPlay() { clearInterval(playT); playT = null; $('play').textContent = '▶'; $('play').classList.remove('on'); }
+$('play').onclick = () => {
+  if (playT) return stopPlay();
+  if (!pt) return;
+  const [y, m, d] = ymd(), ev = dayEvents(pt.lat, pt.lng, y, m, d);
+  const mins = t => { const x = hmIn(t, TZ); return x.h * 60 + x.m; };
+  const a = ev.sunrise ? mins(ev.sunrise) : 0, z = ev.sunset ? mins(ev.sunset) : ev.polar === 'night' ? 0 : 1439;
+  if (z <= a) { $('gstat').textContent = tr('noSunrise'); return; }
+  let t = a; $('play').textContent = '⏸'; $('play').classList.add('on');
+  playT = setInterval(() => { // ~6 sn'de doğumdan batıma, 5 dk adım
+    $('time').value = t; draw(); t += 5;
+    if (t > z) stopPlay();
+  }, 6000 / ((z - a) / 5));
+};
+$('date').addEventListener('input', seasonMark);
+seasonMark();
+$('kat').oninput = () => { katSrc = null; draw(); };
+$('katwarn').onclick = $('katmsg').onclick = e => { e.preventDefault(); if (katFix == null) return; $('kat').value = katFix; katSrc = null; draw(); };
+setInterval(drawSky, 60000); // "şu an" göstergesi
+locate();
+</script>
+</body>
+</html>
