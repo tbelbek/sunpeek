@@ -1,4 +1,5 @@
 // SunPeek uygulama mantığı (index.html'den ayrıldı: CSP satır içi betiğe izin vermesin diye)
+import { overtureBuildings, terrariumElev } from './tiles.js';
 import { t as tr, lang, LANGS, dirs, dirsLong, applyStatic } from './i18n.js';
 import { STOREY, zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip, annualPOA, pvYield, PV, shadowRing } from './sun.js';
 
@@ -8,7 +9,7 @@ const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.
 const map = L.map('map', { rotate: true, touchRotate: false, rotateControl: false, bearing: 0, zoomControl: false }).setView([51.4779, -0.0015], 17);
 L.control.zoom({ position: 'topright' }).addTo(map); // telefonda gizli (iki parmak); sol üst arama, sağ alt düğmeler
 // Veri şeffaflığı: bu oturumda hangi servise kaç istek gitti (SunPeek'in kendi sunucusuna hiçbiri gitmez)
-const NET = { overpass: 0, elev: 0, tz: 0, nom: 0, tiles: 0, irr: 0 };
+const NET = { overpass: 0, overture: 0, elev: 0, terr: 0, tz: 0, nom: 0, photon: 0, tiles: 0, irr: 0 };
 // Servis sağlığı: her istek buradan geçer; hata/yanıtsızlık servis başına saklanır, konsola yazılır, döküm kartında görünür
 const NETERR = {};
 function svcFail(k, msg) { NETERR[k] = { msg: String(msg).slice(0, 80), t: new Date() }; console.warn('[SunPeek] servis sorunu:', k, msg); }
@@ -17,6 +18,8 @@ async function sfetch(k, url, opt) {
   try { const r = await fetch(url, opt); if (!r.ok) svcFail(k, 'HTTP ' + r.status); return r; }
   catch (e) { svcFail(k, e.name === 'TimeoutError' ? 'timeout' : e.message); throw e; }
 }
+// Yedek kaynak çağrısı: sayılır, hatası servis kaydına düşer
+async function backup(k, fn) { net(k); try { return await fn(); } catch (e) { svcFail(k, e.name === 'TimeoutError' ? 'timeout' : e.message); throw e; } }
 function net(k) { NET[k]++; const el = document.getElementById('nettxt'); if (el) el.textContent = tr('netLine', { n: Object.values(NET).reduce((a, b) => a + b, 0) }); }
 const tiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 20, maxNativeZoom: 19, attribution: 'Esri World Imagery · buildings © OpenStreetMap'
@@ -38,7 +41,8 @@ let cmpOff = +(localStorage.getItem('cmpOff') || 0); // pusula düzeltmesi (many
 
 let TZ = null; // konumun saat dilimi (Open-Meteo); gelene kadar tarayıcınınki
 // Saat biçimi: '12' / '24' / boş = dilin alışkanlığı (Daha fazla › saat)
-let CLOCK = (() => { try { return localStorage.getItem('clock'); } catch { return null; } })(); // lsGet aşağıda tanımlı const H12 = () => CLOCK ? { hour12: CLOCK === '12' } : {};
+let CLOCK = (() => { try { return localStorage.getItem('clock'); } catch { return null; } })(); // lsGet aşağıda tanımlı
+const H12 = () => CLOCK ? { hour12: CLOCK === '12' } : {};
 const hm = t => t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', timeZone: TZ ?? undefined, ...H12() });
 const hLbl = h => (H12().hour12 ?? new Intl.DateTimeFormat(lang, { hour: 'numeric' }).resolvedOptions().hour12) ? `${h % 12 || 12}${h < 12 ? 'a' : 'p'}` : h; // ışın etiketi
 const pad = n => String(n).padStart(2, '0');
@@ -412,14 +416,22 @@ function rainbow() {
 
 // ---------- binalar ----------
 // Tarayıcıda saklanır (yer dolarsa eski bina önbellekleri silinir); aynı bölgeye dönünce anında gelir.
+// Binalar: önce OpenStreetMap (Overpass, aynalarıyla); hiçbiri yanıt vermezse Overture Maps (statik karolar, sınırsız).
+// İkisi ayrı anahtarla saklanır: yedekten gelen veri, Overpass döndüğünde onun yerini kalıcı olarak tutmasın.
+const store = (key, v) => { const txt = JSON.stringify(v); for (let i = 0; i < 2; i++) try { localStorage.setItem(key, txt); break; }
+  catch { Object.keys(localStorage).filter(k => /^ov[t]?:/.test(k)).forEach(k => localStorage.removeItem(k)); } };
 async function fetchEls(lat, lng) {
   const key = `ov:${lat},${lng}`, hit = lsJSON(key, Array.isArray);
   if (hit) return hit;
-  const el = await fetchOverpass(lat, lng), txt = JSON.stringify(el);
-  for (let i = 0; i < 2; i++) try { localStorage.setItem(key, txt); break; }
-    catch { Object.keys(localStorage).filter(k => k.startsWith('ov:')).forEach(k => localStorage.removeItem(k)); }
-  return el;
+  try { const el = await fetchOverpass(lat, lng); store(key, el); return el; }
+  catch (err) {
+    const k2 = `ovt:${lat},${lng}`, hit2 = lsJSON(k2, Array.isArray);
+    if (hit2) { useOverture(); return hit2; }
+    try { const el = await backup('overture', () => overtureBuildings(lat, lng, 400, AbortSignal.timeout(30000))); store(k2, el); useOverture(); return el; }
+    catch { throw err; } // iki kaynak da yoksa Overpass'ın hatası gösterilir
+  }
 }
+const useOverture = () => map.attributionControl.addAttribution('© <a href="https://overturemaps.org" target="_blank" rel="noopener">Overture Maps</a>');
 async function fetchOverpass(lat, lng) {
   const a = `around:400,${lat},${lng}`; // kış güneşi alçak: 30 m bina ~340 m'ye gölge düşürür
   const q = `[out:json][timeout:60];(way(${a})["building"];way(${a})["building:part"];relation(${a})["building"];);out tags geom;`;
@@ -438,6 +450,13 @@ async function fetchOverpass(lat, lng) {
 async function fetchElev(pts, key) {
   const hit = key && lsJSON(key, x => Array.isArray(x) && x.length === pts.length && x.every(Number.isFinite));
   if (hit) return hit;
+  let out;
+  try { out = await fetchMeteoElev(pts); }
+  catch (err) { try { out = await backup('terr', () => terrariumElev(pts, AbortSignal.timeout(30000))); } catch { throw err; } } // yedek: AWS Terrain Tiles
+  if (key) try { localStorage.setItem(key, JSON.stringify(out)); } catch {}
+  return out;
+}
+async function fetchMeteoElev(pts) {
   const out = [];
   for (let i = 0; i < pts.length; i += 100) {
     const c = pts.slice(i, i + 100), url = `https://api.open-meteo.com/v1/elevation?latitude=${c.map(p => p[0].toFixed(5))}&longitude=${c.map(p => p[1].toFixed(5))}`;
@@ -448,7 +467,6 @@ async function fetchElev(pts, key) {
       await new Promise(res => setTimeout(res, 3000 * (k + 1)));
     }
   }
-  if (key) try { localStorage.setItem(key, JSON.stringify(out)); } catch {}
   return out;
 }
 // Son çekimin merkezinden 120 m içindeysek aynı veriyi yeni noktaya göre yeniden hesapla (yürürken her adımda çekme).
@@ -547,6 +565,7 @@ async function fetchTZ(lat, lng, retried = false) {
     tz = (await r.json()).timezone;
     if (validTZ(tz)) lsSet(key, tz); else tz = null; // doğrulanmadan saklanmaz
   } catch { tz = null; }
+  if (!tz) try { const { default: lookup } = await import('./tz.js'); tz = lookup(lat, lng); if (!validTZ(tz)) tz = null; } catch { tz = null; } // yedek: uygulamaya gömülü saat dilimi haritası (ağ yok)
   if (seq !== tzSeq) return; // bu arada başka yere gidildi: eski yanıt uygulanmaz
   if (!tz) {
     if (TZ) { TZ = null; draw(); } // bilinmiyorsa önceki yerin saat dilimi kalmasın
@@ -660,9 +679,13 @@ $('sform').onsubmit = async e => {
   if (m && Math.abs(+m[1]) <= 90 && Math.abs(+m[2]) <= 180) { box.innerHTML = ''; $('coord').blur(); return jump(+m[1], +m[2]); }
   box.innerHTML = `<span class="muted">${tr('loading')}</span>`;
   try {
-    const r = await nominatim(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=${lang}&q=${encodeURIComponent(q.slice(0, 200))}`);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const res = (await r.json()).filter(x => Number.isFinite(+x.lat) && Number.isFinite(+x.lon) && Math.abs(+x.lat) <= 90 && Math.abs(+x.lon) <= 180);
+    let res;
+    try {
+      const r = await nominatim(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=${lang}&q=${encodeURIComponent(q.slice(0, 200))}`);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      res = await r.json();
+    } catch (err) { try { res = await photon(q); } catch { throw err; } } // yedek: Photon (komoot), aynı OSM verisi
+    res = res.filter(x => Number.isFinite(+x.lat) && Number.isFinite(+x.lon) && Math.abs(+x.lat) <= 90 && Math.abs(+x.lon) <= 180);
     if (seq !== searchSeq) return; // daha yeni bir arama ya da seçim var
     box.innerHTML = res.length ? '' : `<span class="muted">${tr('noResults')}</span>`;
     for (const x of res) {
@@ -673,6 +696,14 @@ $('sform').onsubmit = async e => {
   } catch (err) { if (seq === searchSeq) box.innerHTML = `<span class="muted">${esc(tr('searchErr', { e: err.message }))}</span>`; }
 };
 $('coord').addEventListener('input', () => { if (!$('coord').value) $('sresults').innerHTML = ''; });
+// Photon sonuçları Nominatim biçimine çevrilir (ad, konum, OSM kimliği)
+async function photon(q) {
+  const r = await sfetch('photon', `https://photon.komoot.io/api/?limit=5&q=${encodeURIComponent(q.slice(0, 200))}${['de', 'en', 'fr'].includes(lang) ? '&lang=' + lang : ''}`, { signal: AbortSignal.timeout(10000) });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return ((await r.json()).features ?? []).map(f => { const p = f.properties ?? {}, [lon, lat] = f.geometry?.coordinates ?? [];
+    return { lat, lon, osm_type: { W: 'way', R: 'relation', N: 'node' }[p.osm_type], osm_id: p.osm_id,
+      display_name: [[p.name, [p.street, p.housenumber].filter(Boolean).join(' ')].filter(Boolean).join(', '), p.city, p.country].filter(Boolean).join(', ') }; });
+}
 // Kat: − / + düğmeleri
 for (const [id, d] of [['katminus', -1], ['katplus', 1]]) $(id).onclick = () => { $('kat').value = Math.max(0, kat() + d); katSrc = null; draw(); };
 // Binaya dokun = o binanın en yakın duvarı seçilir; açık alana dokun = kendi konumunu oraya taşı (iğne de sürüklenebilir)
@@ -752,10 +783,10 @@ function showIntro(help = false) {
 }
 $('helpbtn').onclick = () => showIntro(true);
 $('netbtn').onclick = () => {
-  const errOf = { dsOverpass: 'overpass', dsElev: 'elev', dsTZ: 'tz', dsNom: 'nom', dsIrr: 'irr', dsTiles: 'tiles' };
+  const errOf = { dsOverpass: 'overpass', dsOverture: 'overture', dsElev: 'elev', dsTerr: 'terr', dsTZ: 'tz', dsNom: 'nom', dsPhoton: 'photon', dsIrr: 'irr', dsTiles: 'tiles' };
   const row = (k, n) => { const e = NETERR[errOf[k]]; return `<tr><td>${esc(tr(k))}${e ? `<div class="bad">${esc(tr('svcErr', { e: e.msg, t: e.t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', ...H12() }) }))}</div>` : ''}</td><td>${n == null ? '' : esc(tr('reqs', { n }))}</td></tr>`; };
   openCard(`<h2 id="cardtitle">${tr('netTitle')}</h2><p>${tr('netOwn')}</p>
-    <table class="net">${row('dsOverpass', NET.overpass)}${row('dsElev', NET.elev)}${row('dsTZ', NET.tz)}${row('dsNom', NET.nom)}${row('dsIrr', NET.irr)}${row('dsTiles', NET.tiles)}${row('dsCdn')}${row('dsCf')}</table>
+    <table class="net">${row('dsOverpass', NET.overpass)}${NET.overture ? row('dsOverture', NET.overture) : ''}${row('dsElev', NET.elev)}${NET.terr ? row('dsTerr', NET.terr) : ''}${row('dsTZ', NET.tz)}${row('dsNom', NET.nom)}${NET.photon ? row('dsPhoton', NET.photon) : ''}${row('dsIrr', NET.irr)}${row('dsTiles', NET.tiles)}${row('dsCdn')}${row('dsCf')}</table>
     <div class="actions"><button class="btn" id="netClose">${tr('close')}</button></div>`);
   $('netClose').onclick = closeCard;
 };
@@ -817,4 +848,5 @@ else {
   // izin gerektirmeyen cihazlarda (Android) pusula kendiliğinden açılır; iOS'ta üstteki oka dokunulur
   if (matchMedia('(pointer: coarse)').matches && window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission !== 'function') requestCompass();
 }
+if (new URLSearchParams(location.search).has('smoke')) { setPoint(51.4779, -0.0015, false); $('time').value = 720; draw(); } // duman testi: çizim de hatasız çalışmalı
 document.documentElement.dataset.ready = '1'; // duman testi (deploy): uygulama sonuna kadar hatasız yüklendi

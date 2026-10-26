@@ -29,6 +29,9 @@ while :; do
   check openmeteo-elev  '"elevation"' 'https://api.open-meteo.com/v1/elevation?latitude=51.4779&longitude=-0.0015'
   check openmeteo-tz    '"timezone"' 'https://api.open-meteo.com/v1/forecast?latitude=51.48&longitude=0&timezone=auto&forecast_days=1&daily=sunrise'
   check openmeteo-archive '"direct_normal_irradiance"' "https://archive-api.open-meteo.com/v1/archive?latitude=51.48&longitude=0&start_date=$D&end_date=$D&hourly=direct_normal_irradiance"
+  check overture-tiles  '' -o /dev/null -r 0-127 "$(sed -n "s/^export const OVERTURE = '\(.*\)';/\1/p" /tiles.js)"
+  check terrarium       '' -o /dev/null 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/12/2183/1209.png'
+  check photon          '"features"' 'https://photon.komoot.io/api/?q=Greenwich&limit=1'
   check nominatim       '"display_name"' 'https://nominatim.openstreetmap.org/reverse?format=json&lat=51.4779&lon=-0.0015'
   check esri-tiles      '' -o /dev/null 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/16/21790/32767'
   check unpkg           '' -o /dev/null -I 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'

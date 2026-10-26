@@ -17,7 +17,7 @@ services:
     container_name: sunpeek-probe
     restart: unless-stopped
     entrypoint: ["sh", "/probe.sh"]
-    volumes: ["./probe.sh:/probe.sh:ro"]
+    volumes: ["./probe.sh:/probe.sh:ro", "./tiles.js:/tiles.js:ro"] # Overture sürüm adresi buradan okunur
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]

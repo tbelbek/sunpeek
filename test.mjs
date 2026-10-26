@@ -138,6 +138,15 @@ console.log('saat dilimi ok');
 }
 console.log('ortanca ok');
 
+// Yedek kaynak: PMTiles karo kimliği (Hilbert) belirtimdeki değerler; gömülü saat dilimi
+{
+  const { tileId } = await import('./tiles.js');
+  assert.deepEqual([tileId(0, 0, 0), tileId(1, 0, 0), tileId(1, 0, 1), tileId(1, 1, 1), tileId(1, 1, 0), tileId(2, 0, 0), tileId(3, 7, 0)], [0, 1, 2, 3, 4, 5, 84]);
+  const { default: tz } = await import('./tz.js');
+  assert.deepEqual([tz(57.69, 11.92), tz(40.99, 29.03), tz(-33.86, 151.21)], ['Europe/Stockholm', 'Europe/Istanbul', 'Australia/Sydney']);
+}
+console.log('yedek ok');
+
 // Güven: yalnız cephenin önündeki binalar sayılır
 {
   const front = [0, 1, 2].map(i => el(sq(-20 + i * 20, -40, 5), { building: 'yes' }, 30 + i));          // güneyde, tahmini
