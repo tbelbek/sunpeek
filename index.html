@@ -129,7 +129,8 @@
     /* telefonda yalnız seçili mevsim yazıyla, diğerleri simge (etiket aria-label'da) */
     #seasons button.ico:not(.on) span { display: none; } #seasons button.ico:not(.on) { width: 44px; padding: 0; justify-content: center; } #seasons button { padding: 0 8px; font-size: 12px; } #seasons { gap: 0; }
   }
-  @media (min-width: 701px) { #top { right: auto; width: 360px; } #seasons { max-width: calc(100vw - 16px); width: max-content; } } /* masaüstünde mevsimler tam genişlik, tüm etiketler */
+  @media (min-width: 701px) { body.closed #panel { top: auto; bottom: 24px; } /* kapalı panel masaüstünde sol alta yaslanır */
+    #top { right: auto; width: 360px; } #seasons { max-width: calc(100vw - 16px); width: max-content; } } /* masaüstünde mevsimler tam genişlik, tüm etiketler */
 </style>
 </head>
 <body>
