@@ -5,7 +5,10 @@
 
 // Overture sürümleri aylık; eski sürümler bir süre sonra silinir. Sunucudaki yoklama (probe.sh) adres düşünce uyarır.
 export const OVERTURE = 'https://overturemaps-extras-us-west-2.s3.amazonaws.com/tiles/2026-10-21.0/buildings.pmtiles';
-const TERRARIUM = (z, x, y) => `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
+// Karo adresleri sırayla denenir: önce SunPeek'in paylaşılan önbelleği (aynı köken), sonra kaynağın kendisi
+const TERRARIUM = (z, x, y) => [`/api/terrain/${z}/${x}/${y}.png`, `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`];
+const inBrowser = typeof location !== 'undefined';
+async function firstOk(urls, signal) { let err; for (const u of urls) { if (!inBrowser && u.startsWith('/')) continue; try { const r = await fetch(u, { signal }); if (r.ok) return r; err = new Error('HTTP ' + r.status); } catch (e) { err = e; } } throw err; }
 
 const lon2x = (lon, z) => (lon + 180) / 360 * 2 ** z;
 const lat2y = (lat, z) => (1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2 * 2 ** z;
@@ -128,14 +131,20 @@ export async function overtureBuildings(lat, lon, r = 400, signal, cache = null)
   for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
     const key = `ovt:${OVERTURE.split('/').at(-2)}:${z}/${x}/${y}`;
     let els = await cache?.get(key);
-    if (!els) { els = await overtureTile(z, x, y, signal); cache?.put(key, els); }
+    if (!els) {
+      // tarayıcıda önce paylaşılan önbellek (sunucu karoyu çözülmüş hâlde saklar), olmazsa PMTiles arşivinden kendimiz
+      els = inBrowser ? await fetch(`/api/overture/${z}/${x}/${y}`, { signal }).then(r => r.ok ? r.json() : null).catch(() => null) : null;
+      els ??= await overtureTile(z, x, y, signal);
+      cache?.put(key, els);
+    }
     all.push(...els);
   }
   const near = e => e.geometry.some(g => Math.abs(g.lat - lat) < dLat && Math.abs(g.lon - lon) < dLon); // karo yarıçaptan geniş
-  const seen = new Map(); for (const e of all) if (near(e) && (seen.get(e.id)?.geometry.length ?? 0) < e.geometry.length) seen.set(e.id, e);
+  const ar = e => Math.abs(e.geometry.reduce((a, g, i) => i ? a + e.geometry[i - 1].lon * g.lat - g.lon * e.geometry[i - 1].lat : 0, 0));
+  const seen = new Map(); for (const e of all) if (near(e) && (seen.has(e.id) ? ar(seen.get(e.id)) : -1) < ar(e)) seen.set(e.id, e); // karo sınırında: alanı büyük parça
   return [...seen.values()];
 }
-async function overtureTile(z, x, y, signal) {
+export async function overtureTile(z, x, y, signal) {
   const best = new Map();
   {
     const t = await getTile(OVERTURE, z, x, y, signal);
@@ -168,9 +177,7 @@ export async function terrariumElev(pts, signal, cache = null) {
     if (!tiles.has(k)) tiles.set(k, (async () => {
       let blob = await cache?.get(`tr:${z}/${k}`);
       if (!blob) {
-        const r = await fetch(TERRARIUM(z, tx, ty), { signal });
-        if (!r.ok) throw new Error('terrain HTTP ' + r.status);
-        blob = await r.blob(); cache?.put(`tr:${z}/${k}`, blob);
+        blob = await (await firstOk(TERRARIUM(z, tx, ty), signal)).blob(); cache?.put(`tr:${z}/${k}`, blob);
       }
       const img = await createImageBitmap(blob), c = new OffscreenCanvas(256, 256), g = c.getContext('2d');
       g.drawImage(img, 0, 0); return g.getImageData(0, 0, 256, 256).data;

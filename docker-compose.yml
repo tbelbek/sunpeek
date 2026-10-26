@@ -23,6 +23,36 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     logging: { driver: json-file, options: { max-size: "1m", max-file: "5" } }
+  # Paylaşılan önbellek API'si: nginx /api/ isteklerini buraya iletir. Veritabanına özel ağdan erişir.
+  api:
+    build: { context: ., dockerfile: api/Dockerfile }
+    image: sunpeek-api:local
+    container_name: sunpeek-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://sunpeek:${PG_PASSWORD:?PG_PASSWORD .env içinde olmalı}@sunpeek-db:5432/sunpeek
+    depends_on: { db: { condition: service_healthy } }
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [proxy_network, sunpeek_db]
+    logging: { driver: json-file, options: { max-size: "5m", max-file: "3" } }
+  # PostgreSQL: yalnız özel ağda, port yayınlanmaz; veri adlandırılmış birimde (Windows bağlama klasörü izinleri bozar)
+  db:
+    image: postgres:17-alpine
+    container_name: sunpeek-db
+    restart: unless-stopped
+    environment: { POSTGRES_USER: sunpeek, POSTGRES_DB: sunpeek, POSTGRES_PASSWORD: "${PG_PASSWORD:?PG_PASSWORD .env içinde olmalı}" }
+    volumes: [sunpeek-pg:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U sunpeek -d sunpeek"], interval: 10s, timeout: 5s, retries: 10 }
+    security_opt: ["no-new-privileges:true"]
+    networks: [sunpeek_db]
+    logging: { driver: json-file, options: { max-size: "5m", max-file: "3" } }
 networks:
+  sunpeek_db:
+    internal: true
   proxy_network:
     external: true
+volumes:
+  sunpeek-pg:

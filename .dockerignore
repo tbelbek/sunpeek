@@ -5,3 +5,4 @@ docs
 *.png
 test.mjs
 README.md
+api/node_modules

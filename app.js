@@ -2,7 +2,7 @@
 import { overtureBuildings, terrariumElev } from './tiles.js';
 import { cget, cput, cmany, cprune, DAY } from './cache.js';
 import { t as tr, lang, LANGS, dirs, dirsLong, applyStatic } from './i18n.js';
-import { STOREY, zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip, annualPOA, pvYield, PV, shadowRing } from './sun.js';
+import { STOREY, zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip, annualPOA, pvYield, PV, shadowRing, facadeRange } from './sun.js';
 
 const $ = id => document.getElementById(id);
 const icon = (n, c = 'ic') => `<svg class="${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
@@ -10,7 +10,7 @@ const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.
 const map = L.map('map', { rotate: true, touchRotate: false, rotateControl: false, bearing: 0, zoomControl: false }).setView([51.4779, -0.0015], 17);
 L.control.zoom({ position: 'topright' }).addTo(map); // telefonda gizli (iki parmak); sol üst arama, sağ alt düğmeler
 // Veri şeffaflığı: bu oturumda hangi servise kaç istek gitti (SunPeek'in kendi sunucusuna hiçbiri gitmez)
-const NET = { overpass: 0, overture: 0, elev: 0, terr: 0, tz: 0, nom: 0, photon: 0, tiles: 0, irr: 0 };
+const NET = { sunpeek: 0, overpass: 0, overture: 0, elev: 0, terr: 0, tz: 0, nom: 0, photon: 0, tiles: 0, irr: 0 };
 // Servis sağlığı: her istek buradan geçer; hata/yanıtsızlık servis başına saklanır, konsola yazılır, döküm kartında görünür
 const NETERR = {};
 function svcFail(k, msg) { NETERR[k] = { msg: String(msg).slice(0, 80), t: new Date() }; console.warn('[SunPeek] servis sorunu:', k, msg); }
@@ -19,9 +19,13 @@ async function sfetch(k, url, opt) {
   try { const r = await fetch(url, opt); if (!r.ok) svcFail(k, 'HTTP ' + r.status); return r; }
   catch (e) { svcFail(k, e.name === 'TimeoutError' ? 'timeout' : e.message); throw e; }
 }
+// Yükleme göstergesi: devam eden her veri isteği sayılır; 300 ms'den uzun sürerse zoom'un yanında döner
+{ const f = window.fetch.bind(window); let n = 0, t = null;
+  const set = d => { n += d; clearTimeout(t); if (n > 0) t = setTimeout(() => document.body.classList.add('loading'), 300); else document.body.classList.remove('loading'); };
+  window.fetch = (...a) => { set(1); return f(...a).finally(() => set(-1)); }; }
 // Yedek kaynak çağrısı: sayılır, hatası servis kaydına düşer
 async function backup(k, fn) { net(k); try { return await fn(); } catch (e) { svcFail(k, e.name === 'TimeoutError' ? 'timeout' : e.message); throw e; } }
-function net(k) { NET[k]++; const el = document.getElementById('nettxt'); if (el) el.textContent = tr('netLine', { n: Object.values(NET).reduce((a, b) => a + b, 0) }); }
+function net(k) { NET[k]++; const el = document.getElementById('nettxt'); if (el) el.textContent = tr('netLine', { s: tr('reqs', { n: NET.sunpeek }), n: Object.values(NET).reduce((a, b) => a + b, 0) - NET.sunpeek }); }
 const tiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 20, maxNativeZoom: 19, attribution: 'Esri World Imagery · buildings © OpenStreetMap'
 });
@@ -91,12 +95,14 @@ function draw() {
   rLayer.clearLayers();
   const [y, m, d] = ymd(), ev = dayEvents(pt.lat, pt.lng, y, m, d);
   const origin = house ? L.latLng(house.lat, house.lon) : pt;
+  // doğuş/batış etiketi baskın: yönü ±10° içindeki saat etiketi çizilmez (üst üste biniyordu)
+  const evAz = [ev.sunrise, ev.sunset].filter(Boolean).map(t => sunpos(pt.lat, pt.lng, t).az), nearEv = az => evAz.some(a => Math.abs(((az - a + 540) % 360) - 180) < 10);
 
   if (house) { // cephe modu: ışınlar cepheden çıkar
     house.day = facadeCached($('date').value, () => facadeDay(house.env, house, surfEye(), y, m, d, 5, TZ, tilt));
     for (const s of house.day.slots) { const lt = hmIn(s.t, TZ); if (lt.m % 30) continue;
       const full = lt.m === 0, end = ray(origin, s.az, full ? 150 : 120, { color: COL[s.state], weight: full ? 3 : 2, opacity: s.state === 'behind' ? 0.5 : 0.85 });
-      if (full) label(end, hLbl(lt.h));
+      if (full && !nearEv(s.az)) label(end, hLbl(lt.h));
     }
   } else {
     const state = obsState;
@@ -106,7 +112,7 @@ function draw() {
       if (p.alt <= 0) continue;
       const lt = hmIn(t, TZ), full = lt.m === 0;
       const end = ray(pt, p.az, full ? 150 : 120, { color: COL[state(p.alt, p.az)], weight: full ? 3 : 2, opacity: full ? 0.9 : 0.6 });
-      if (full) label(end, hLbl(lt.h));
+      if (full && !nearEv(p.az)) label(end, hLbl(lt.h));
     }
   }
   for (const [t, sym] of [[ev.sunrise, '↑'], [ev.sunset, '↓']]) if (t)
@@ -128,8 +134,8 @@ function draw() {
   $('now').innerHTML = `<span class="dot ${cls}"></span><span>${st}</span>`;
   $('sumdot').className = 'dot ' + cls;
   // Cephe seçiliyse başlık günün cevabını verir; anlık durum saat kaydırıcısının altında (#now)
-  $('sum').textContent = house ? (getConf()?.level !== 'ok' && getConf() ? '≈ ' : '') + tr('sumHours', { h: dur(house.day.visH), d: $('date').value === todayStr ? tr('todayLower') : dm(`${pad(m)}-${pad(d)}`) }) : st;
-  $('eyeM').textContent = `≈ ${eye().toFixed(1)} m`;
+  $('sum').textContent = house ? (confOf().conf < 75 ? '≈ ' : '') + tr('sumHours', { h: dur(house.day.visH), d: $('date').value === todayStr ? tr('todayLower') : dm(`${pad(m)}-${pad(d)}`) }) : st;
+  $('eyeM').textContent = kat() ? `≈ ${eye().toFixed(1)} m` : floorName(0); // 0'ın zemin kat olduğu açık olsun
   clearFloor();
 
   const polar = { day: tr('polarDay'), night: tr('polarNight') }[ev.polar];
@@ -176,6 +182,8 @@ async function fetchIrr(lat, lon) {
   const key = `irr:${IRR_YEAR - IRR_YEARS + 1}-${IRR_YEAR}:${lat.toFixed(1)},${lon.toFixed(1)}`;
   const hit = (await cget(key))?.v; // anahtar yılları içerir: yıl değişince kendiliğinden yenilenir
   if (hit?.dni?.length > 8000 * IRR_YEARS) return hit;
+  const srv = await sfetch('sunpeek', `/api/irr?lat=${lat.toFixed(1)}&lon=${lon.toFixed(1)}&y1=${IRR_YEAR - IRR_YEARS + 1}&y2=${IRR_YEAR}`, { signal: AbortSignal.timeout(30000) }).catch(() => null);
+  if (srv?.ok) { const d = await srv.json(); if (d?.dni?.length > 8000 * IRR_YEARS) { cput(key, d); return d; } }
   const r = await sfetch('irr', `https://archive-api.open-meteo.com/v1/archive?latitude=${lat.toFixed(2)}&longitude=${lon.toFixed(2)}&start_date=${IRR_YEAR - IRR_YEARS + 1}-01-01&end_date=${IRR_YEAR}-12-31&hourly=direct_normal_irradiance,diffuse_radiation&timezone=GMT&timeformat=unixtime`, { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const h = (await r.json()).hourly;
@@ -215,29 +223,29 @@ function drawHouse() {
   const sum = on(S.summer), win = on(S.winter);
   el.style.display = '';
   saveHist({ day: house.day, sum, win, fmt });
-  // Önce cevap: üç büyük kutucuk (seçili gün / yaz / kış), altında saat aralıkları
+  // Önce cevap: üç büyük kutucuk (seçili gün / yaz / kış), altında güven çipi ve saat aralıkları
   const [, mo, da] = ymd(), dayLbl = $('date').value === todayStr ? tr('today') : dm(`${pad(mo)}-${pad(da)}`);
-  const c = getConf(), est = c && c.level !== 'ok', ap = est ? '≈ ' : '';
+  const Rg = confOf(), lvl = Rg.conf >= 75 ? 'hi' : Rg.conf >= 45 ? 'mid' : 'lo', ap = lvl === 'hi' ? '' : '≈ ';
   const tSel = timeAt(+$('time').value), sl = house.day.slots.find(s => Math.abs(s.t - tSel) <= 150000);
   const incTxt = sl && sl.state !== 'behind' && sl.inc < 90 ? tr('incAt', { t: hm(tSel), a: sl.inc.toFixed(0) }) : tr('incNone', { t: hm(tSel) });
-  const tile = (lbl, r) => `<div class="tile"><b>${ap}${dur(r.visH)}</b><span>${lbl}</span></div>`;
+  const tile = (ic, lbl, r) => `<div class="tile">${icon(ic)}<b>${ap}${dur(r.visH)}</b><span>${lbl}</span></div>`;
   const addr = hist().find(e => e.key === `${house.id}:${Math.round(house.az)}`)?.addr;
-  el.innerHTML = `${est ? `<button id="estrow" class="estrow" type="button">${icon('triangle-alert')}<span>${tr('estRow')}</span><u>${tr('details')}</u></button>` : ''}<div class="tiles">${tile(dayLbl, house.day)}${tile(tr('summerSol', { d: dm(S.summer) }), sum)}${tile(tr('winterSol', { d: dm(S.winter) }), win)}</div>
+  el.innerHTML = `<div class="tiles">${tile('calendar', dayLbl, house.day)}${tile('sun', tr('summerSol', { d: dm(S.summer) }), sum)}${tile('snowflake', tr('winterSol', { d: dm(S.winter) }), win)}</div>
+    <button id="confchip" class="chip c-${lvl}" type="button" aria-haspopup="dialog"><span class="dot"></span><span>${esc(tr('confChip', { l: { hi: tr('conf_hi'), mid: tr('conf_mid'), lo: tr('conf_lo') }[lvl] }))}</span><span class="rng">${esc(dur(Rg.lo))} – ${esc(dur(Rg.hi))}</span>${icon('chevron-right')}</button>
     <div class="wins"><span>${dayLbl}</span><span>${fmt(house.day)}</span><span>${tr('summer')}</span><span>${fmt(sum)}</span><span>${tr('winter')}</span><span>${fmt(win)}</span></div>
     <div class="facrow">${icon('house')}<div><div class="st">${esc(cap(tr('wallFacing', { dir: dirsLong[Math.round(house.az / 45) % 8] })))} · ${esc(floorName(kat()))}</div>
-      ${addr ? `<div>${esc(addr)}</div>` : ''}<div class="muted">${esc(tr('facadeDetail', { az: house.az.toFixed(0), h: house.h.toFixed(0), est: house.guessed ? tr('estimated') : '', e: eye().toFixed(1) }))}</div></div>
+      ${addr ? `<div>${esc(addr)}</div>` : ''}</div>${tip(tr('facadeDetail', { az: house.az.toFixed(0), h: house.h.toFixed(0), est: house.guessed ? tr('estimated') : '', e: eye().toFixed(1) }))}
       <button id="unpick" class="iconbtn" aria-label="${tr('unpick')}" title="${tr('unpick')}">${icon('x')}</button></div>
-    <label class="chk"><input type="checkbox" id="solarchk"${solar ? ' checked' : ''}> ${esc(tr('solarToggle'))}</label>
-    ${solar ? `<section class="solarcard" aria-labelledby="solarh"><h3 id="solarh">${icon('sun')}${esc(tr('solarTitle'))}</h3><div class="field"><label for="surf">${tr('surface')}</label><select id="surf">${[90, 60, 45, 35, 30, 15, 0].map(v => `<option value="${v}"${v === tilt ? ' selected' : ''}>${esc(v === 90 ? tr('surfWall') : v === 0 ? tr('surfFlat') : tr('surfRoof', { t: v }))}</option>`).join('')}</select></div>
+    <details id="solarbox" class="sec"${solar ? ' open' : ''}><summary><span class="sumic">${icon('sun')}${esc(tr('solarTitle'))}</span>${icon('chevron-down')}</summary>
+    ${solar ? `<section class="solarcard"><div class="field"><label for="surf">${tr('surface')}</label><select id="surf">${[90, 60, 45, 35, 30, 15, 0].map(v => `<option value="${v}"${v === tilt ? ' selected' : ''}>${esc(v === 90 ? tr('surfWall') : v === 0 ? tr('surfFlat') : tr('surfRoof', { t: v }))}</option>`).join('')}</select></div>
     <div class="energy">${tip(tr('energyNote') + (tilt < 90 ? ' ' + tr('roofNote', { h: (house.h + 0.5).toFixed(0) }) : ''))}${esc(incTxt)}<br>${esc(tr('energyRow', { d: dayLbl, e: house.day.energy.toFixed(1), s: sum.energy.toFixed(1), w: win.energy.toFixed(1) }))}</div>
-
-    <div id="annual" class="annual"></div></section>` : ''}
+    <div id="annual" class="annual"></div></section>` : ''}</details>
     ${compassOn ? `<div class="calrow"><button id="calib" class="btn">${icon('ruler')}${tr('calib')}</button>${tip(tr('calibHelp', { c: (cmpOff >= 0 ? '+' : '') + cmpOff.toFixed(0) }))}</div>` : ''}`;
   $('unpick').onclick = () => { house = null; drawBuildings(); draw(); };
-  $('estrow')?.addEventListener('click', openConf);
+  $('confchip').onclick = openConf;
   if ($('surf')) $('surf').onchange = () => { tilt = +$('surf').value; draw(); };
   if (solar) showAnnual();
-  $('solarchk').onchange = () => { solar = $('solarchk').checked; lsSet('solar', solar ? '1' : ''); if (!solar) tilt = 90; draw(); };
+  $('solarbox').ontoggle = () => { if ($('solarbox').open === solar) return; solar = $('solarbox').open; lsSet('solar', solar ? '1' : ''); if (!solar) tilt = 90; draw(); };
   if ($('calib')) $('calib').onclick = () => { // duvara bakan telefonun gerçek yönü = cephe yönü + 180°
     if (raw == null) return;
     cmpOff = ((house.az + 180 - raw + 540) % 360) - 180; localStorage.setItem('cmpOff', cmpOff); heading = null;
@@ -303,7 +311,8 @@ async function lookupAddr(e, retried = false) {
   if (addrPending.has(e.key)) return; // aynı kayıt için tek istek
   addrPending.add(e.key);
   try {
-    const r = await nominatim(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=${lang}&lat=${e.lat.toFixed(6)}&lon=${e.lon.toFixed(6)}`);
+    const srv = await sfetch('sunpeek', `/api/reverse?lang=${lang}&lat=${e.lat.toFixed(5)}&lon=${e.lon.toFixed(5)}`, { signal: AbortSignal.timeout(12000) }).catch(() => null);
+    const r = srv?.ok ? srv : await nominatim(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=${lang}&lat=${e.lat.toFixed(6)}&lon=${e.lon.toFixed(6)}`);
     const a = (await r.json()).address ?? {};
     const addr = [[a.road, a.house_number].filter(Boolean).join(' '), a.city ?? a.town ?? a.village ?? a.suburb].filter(Boolean).join(', ');
     if (addr) putHist(hist().map(x => x.key === e.key ? { ...x, addr: addr.slice(0, 200) } : x));
@@ -419,9 +428,9 @@ function rainbow() {
 // Tarayıcıda saklanır (yer dolarsa eski bina önbellekleri silinir); aynı bölgeye dönünce anında gelir.
 // Binalar ~550 m'lik ızgara hücrelerinde saklanır (IndexedDB). Nokta için ±600 m (≈1 km kare) gereken hücreler:
 // taze olanlar önbellekten, eksikler tek bir Overpass kutu sorgusuyla. Yakında başka bir duvar seçilince ağ isteği olmaz.
-// Tazelik: 30 gün. Bayat hücre hemen kullanılır ve arka planda yenilenir; yenileme başarısızsa eskisi kalır.
+// Tazelik: 90 gün. Bayat hücre hemen kullanılır ve arka planda yenilenir; yenileme başarısızsa eskisi kalır.
 // Overpass hiç yanıt vermezse Overture Maps karoları (sürüm anahtarlı, ayrı saklanır; OSM hücrelerine karışmaz).
-const CELL = 0.005, BLD_TTL = 30 * DAY, BLD_R = 600, HEDGE = 8000;
+const CELL = 0.005, BLD_TTL = 90 * DAY, BLD_R = 600, HEDGE = 8000;
 let osmDownUntil = 0;
 const idb = { get: async k => (await cget(k))?.v, put: cput };
 function cellsAround(lat, lng) {
@@ -440,16 +449,16 @@ async function fetchCells(keys) { // eksik/bayat hücreleri kapsayan tek kutu; h
   return by;
 }
 // Hesaba yalnız 500 m içindekiler girer (en alçak kış güneşinde bile daha uzaktaki binanın gölgesi düşmez); ±600 m önbellek içindir
-const within = (lat, lng, m = 500) => { const k = Math.cos(lat * Math.PI / 180);
-  return e => { const g = e.geometry?.[0] ?? e.members?.find(x => x.geometry)?.geometry?.[0]; return g && Math.hypot((g.lat - lat) * 111320, (g.lon - lng) * 111320 * k) < m; }; };
-async function fetchEls(lat, lng) { return (await fetchArea(lat, lng)).filter(within(lat, lng)); }
+const within = (lat, lng, m = 600) => { const k = Math.cos(lat * Math.PI / 180), d = g => Math.hypot((g.lat - lat) * 111320, (g.lon - lng) * 111320 * k) < m;
+  return e => (e.geometry ?? e.members?.flatMap(x => x.geometry ?? []) ?? []).some(d); }; // herhangi bir köşesi yakındaysa (büyük binalar merkezden kesilmesin)
+async function fetchEls(lat, lng) { return (await fetchArea(lat, lng)).filter(within(lat, lng)); } // hesaba 600 m (en yakın köşe)
 async function fetchArea(lat, lng) {
   const keys = cellsAround(lat, lng), { fresh, stale, missing } = await cmany(keys, BLD_TTL);
-  if (stale.size) fetchCells([...stale.keys()]).catch(() => {}); // arka planda tazele
+  if (stale.size) viaServer([...stale.keys()]).catch(() => {}); // arka planda tazele
   if (!missing.length) return [...fresh.values(), ...stale.values()].flat();
   // Overpass'a 10 sn önce başlama hakkı; yanıt yoksa ya da hata verirse Overture paralel başlar, önce gelen kullanılır.
   // Geç gelen Overpass yanıtı yine hücrelere yazılır: bir sonraki ziyarette ana kaynağın verisi önbellekten gelir.
-  const osm = fetchCells(missing).then(got => [...fresh.values(), ...stale.values(), ...got.values()].flat());
+  const osm = viaServer(missing).then(got => [...fresh.values(), ...stale.values(), ...got.values()].flat());
   let ovt = null;
   const startOvt = () => ovt ??= backup('overture', () => overtureBuildings(lat, lng, BLD_R, AbortSignal.timeout(30000), idb)).then(el => (useOverture(), el));
   // devre kesici: Overpass yakın zamanda yanıt veremediyse Overture beklemeden başlar (yarış yine sürer)
@@ -458,6 +467,17 @@ async function fetchArea(lat, lng) {
     osm.then(() => { clearTimeout(t); osmDownUntil = 0; }, () => { clearTimeout(t); osmDownUntil = Date.now() + 600000; startOvt().then(res, rej); });
   });
   try { return await Promise.any([osm, late]); } catch (e) { throw e.errors?.[0] ?? e; } // ikisi de yoksa Overpass'ın hatası
+}
+// Önce SunPeek'in paylaşılan önbelleği: başka bir kullanıcının indirdiği bölge anında gelir; eksikleri sunucu Overpass'tan çeker.
+// Sunucuya ulaşılamazsa doğrudan Overpass; sunucu bazı hücreleri getiremediyse (Overpass yok) hata → Overture yarışı devralır.
+async function viaServer(keys) {
+  let r;
+  try { r = await sfetch('sunpeek', `/api/cells?k=${keys.map(k => k.slice(3)).join(',')}`, { signal: AbortSignal.timeout(15000) }); } catch { r = null; }
+  if (!r?.ok) return fetchCells(keys);
+  const { cells = {}, missing = [] } = await r.json(), by = new Map();
+  for (const [ij, v] of Object.entries(cells)) if (Array.isArray(v)) { by.set('oc:' + ij, v); cput('oc:' + ij, v); }
+  if (missing.length) throw new Error('buildings: server could not fetch ' + missing.length + ' cells');
+  return by;
 }
 const useOverture = () => map.attributionControl.addAttribution('© <a href="https://overturemaps.org" target="_blank" rel="noopener">Overture Maps</a>');
 async function fetchOverpass([s, w, n, e]) { // kutu: güney, batı, kuzey, doğu (kış güneşi alçak: 30 m bina ~340 m'ye gölge düşürür)
@@ -712,9 +732,11 @@ $('sform').onsubmit = async e => {
   try {
     let res;
     try {
-      const r = await nominatim(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=${lang}&q=${encodeURIComponent(q.slice(0, 200))}`);
+      const srv = await sfetch('sunpeek', `/api/search?lang=${lang}&q=${encodeURIComponent(q.slice(0, 200))}`, { signal: AbortSignal.timeout(12000) }).catch(() => null);
+      if (srv?.ok) res = await srv.json();
+      else { const r = await nominatim(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=${lang}&q=${encodeURIComponent(q.slice(0, 200))}`);
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      res = await r.json();
+      res = await r.json(); }
     } catch (err) { try { res = await photon(q); } catch { throw err; } } // yedek: Photon (komoot), aynı OSM verisi
     res = res.filter(x => Number.isFinite(+x.lat) && Number.isFinite(+x.lon) && Math.abs(+x.lat) <= 90 && Math.abs(+x.lon) <= 180);
     if (seq !== searchSeq) return; // daha yeni bir arama ya da seçim var
@@ -814,10 +836,10 @@ function showIntro(help = false) {
 }
 $('helpbtn').onclick = () => showIntro(true);
 $('netbtn').onclick = () => {
-  const errOf = { dsOverpass: 'overpass', dsOverture: 'overture', dsElev: 'elev', dsTerr: 'terr', dsTZ: 'tz', dsNom: 'nom', dsPhoton: 'photon', dsIrr: 'irr', dsTiles: 'tiles' };
+  const errOf = { dsSunpeek: 'sunpeek', dsOverpass: 'overpass', dsOverture: 'overture', dsElev: 'elev', dsTerr: 'terr', dsTZ: 'tz', dsNom: 'nom', dsPhoton: 'photon', dsIrr: 'irr', dsTiles: 'tiles' };
   const row = (k, n) => { const e = NETERR[errOf[k]]; return `<tr><td>${esc(tr(k))}${e ? `<div class="bad">${esc(tr('svcErr', { e: e.msg, t: e.t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', ...H12() }) }))}</div>` : ''}</td><td>${n == null ? '' : esc(tr('reqs', { n }))}</td></tr>`; };
   openCard(`<h2 id="cardtitle">${tr('netTitle')}</h2><p>${tr('netOwn')}</p>
-    <table class="net">${row('dsOverpass', NET.overpass)}${NET.overture ? row('dsOverture', NET.overture) : ''}${row('dsTerr', NET.terr)}${NET.elev ? row('dsElev', NET.elev) : ''}${NET.tz ? row('dsTZ', NET.tz) : ''}${row('dsNom', NET.nom)}${NET.photon ? row('dsPhoton', NET.photon) : ''}${row('dsIrr', NET.irr)}${row('dsTiles', NET.tiles)}${row('dsCdn')}${row('dsCf')}</table>
+    <table class="net">${row('dsSunpeek', NET.sunpeek)}${row('dsOverpass', NET.overpass)}${NET.overture ? row('dsOverture', NET.overture) : ''}${row('dsTerr', NET.terr)}${NET.elev ? row('dsElev', NET.elev) : ''}${NET.tz ? row('dsTZ', NET.tz) : ''}${row('dsNom', NET.nom)}${NET.photon ? row('dsPhoton', NET.photon) : ''}${row('dsIrr', NET.irr)}${row('dsTiles', NET.tiles)}${row('dsCdn')}${row('dsCf')}</table>
     <div class="actions"><button class="btn" id="netClose">${tr('close')}</button></div>`);
   $('netClose').onclick = closeCard;
 };
@@ -846,15 +868,16 @@ function drawConf() {
   $('conf').setAttribute('aria-label', tr('confTitle'));
 }
 $('conf').onclick = () => openConf();
-// Belirsizlik: tahmini yükseklikler %40 alçak / %60 yüksek olsaydı seçili cephenin güneş süresi ne olurdu
-const GUESS_LO = 0.6, GUESS_HI = 1.6;
+// Güven: tüm komşu yükseklikleri kendi belirsizliklerinin (ölçülmüş ±1,5 m, kat sayısından ±(1+0,3·kat) m, tahmini ±%35–45)
+// ucunda ve pencere ±0,5 m olsaydı sonucun aralığı (sun.js facadeRange). Ağaçlar ve haritada olmayan binalar dahil değil.
+function confOf(date = $('date').value) {
+  const envR = house.envR ??= { lo: { ...house.env, hs: 1 }, hi: { ...house.env, hs: -1 } }, [y, m, d] = date.split('-').map(Number);
+  return facadeCached('rng' + date, () => facadeRange(envR, house, surfEye(), y, m, d, TZ, tilt));
+}
 function confRange() {
-  const [y, m, d] = $('date').value.split('-').map(Number), S = SEASON(house.lat);
-  const days = [[tr('today'), y, m, d], ...[['summer', S.summer], ['winter', S.winter]].map(([k, md]) => [tr(k), y, ...md.split('-').map(Number)])];
-  return days.map(([lbl, yy, mm, dd]) => {
-    const h = gs => facadeCached(`r${gs}|${yy}-${mm}-${dd}`, () => facadeDay((house.envGs ??= {})[gs] ??= { ...house.env, gs }, house, surfEye(), yy, mm, dd, 5, TZ, tilt)).visH;
-    const lo = h(GUESS_HI), hi = h(GUESS_LO);
-    return `<tr><td>${esc(lbl)}</td><td>${Math.abs(hi - lo) < 1 / 12 ? esc(dur(lo)) : `${esc(dur(lo))} – ${esc(dur(hi))}`}</td></tr>`;
+  const y = +$('date').value.slice(0, 4), S = SEASON(house.lat);
+  return [[tr('today'), $('date').value], [tr('summer'), `${y}-${S.summer}`], [tr('winter'), `${y}-${S.winter}`]].map(([lbl, dt]) => {
+    const r = confOf(dt); return `<tr><td>${esc(lbl)}</td><td>${Math.abs(r.hi - r.lo) < 1 / 12 ? esc(dur(r.lo)) : `${esc(dur(r.lo))} – ${esc(dur(r.hi))}`}</td></tr>`;
   }).join('');
 }
 function openConf() {
@@ -873,7 +896,12 @@ function openConf() {
 // E2E test kancası (yalnız ?e2e ile): iç duruma salt okunur erişim, e2e/run.js kullanır
 if (new URLSearchParams(location.search).has('e2e')) window.__sp = { map, frame, get pt() { return pt; }, get house() { return house; }, get B() { return B; } };
 drawHeading(); // üstteki ok, konum gelmeden de durumunu göstersin
-if (!localStorage.getItem('introSeen')) showIntro();
+// Bağlantıyla konum: ?at=enlem,boylam — o noktaya gider ve oradaki binanın duvarını seçer (paylaşılabilir link).
+// Varsayılan açılış (izin sorgusu, Greenwich) atlanır: asenkron sorgu sonradan dönüp bağlantıdaki konumu eziyordu.
+const atLink = (() => { const a = new URLSearchParams(location.search).get('at')?.match(/^(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)$/);
+  return a && Math.abs(+a[1]) <= 90 && Math.abs(+a[2]) <= 180 ? [+a[1], +a[2]] : null; })();
+if (atLink) { lsSet('introSeen', 1); follow = false; pendingPick = { lat: atLink[0], lon: atLink[1], osmId: null }; setPoint(...atLink); }
+else if (!localStorage.getItem('introSeen')) showIntro();
 else {
   navigator.permissions?.query({ name: 'geolocation' }).then(p => p.state === 'granted' ? locate() : setPoint(51.4779, -0.0015)).catch(() => locate()) ?? locate();
   // izin gerektirmeyen cihazlarda (Android) pusula kendiliğinden açılır; iOS'ta üstteki oka dokunulur

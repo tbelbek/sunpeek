@@ -2,117 +2,81 @@
 
 **→ [sunpeek.uk](https://sunpeek.uk)**
 
-**How much direct sun does this facade get?** Tap a building wall on the map, or point your phone at it, and SunPeek tells you how many hours of direct sun it gets today, at midsummer and at midwinter, with the exact time windows. It is built for house hunting: *does that balcony get afternoon sun in winter?*
+**How much direct sun does this wall get?** Search an address or tap a building wall on the map, and SunPeek tells you how many hours of direct sun it gets today, at midsummer and at midwinter, with the exact time windows and a confidence range. It is built for house hunting: *does that balcony get afternoon sun in winter?*
 
-<img src="docs/screenshot.png" width="320" alt="SunPeek on a phone: rays coloured by sun/shade, season buttons, compass arrow and sky plot">
+<img src="docs/screenshot.png" width="320" alt="SunPeek on a phone: rays coloured by sun/shade, season buttons, floor picker and result tiles">
 
-## Features
+## What you get
 
-- **Search** an address (OpenStreetMap Nominatim) or paste `lat, lon`. Tapping anywhere else on the map moves your position there and centres the map; **Back to my location** appears once you're more than 30 m from your GPS fix.
-- **Light and dark mode** follow the system setting; flat icon set, 44 px touch targets.
-- **Address → building:** searching an address finds that building (Nominatim OSM id, else the building at or within 25 m of the point), picks its most sun-facing long wall and calculates right away; tap another wall to compare.
-- **Solar energy (opt-in checkbox):** angle of incidence at the selected time and clear-sky direct energy (kWh/m², Meinel model) for the wall or for a roof panel at 0–60° facing the same way. Clouds and diffuse light are not included; use PVGIS for yield.
-- **Where your data goes:** a live line shows that nothing is sent to SunPeek's own server and how many requests went to each map-data service; tap for the breakdown.
-- **Season bar** can be collapsed to the active season; on desktop all labels are shown.
-- **Tap a wall, get the answer:** today / summer / winter hours as big tiles, time windows below. Tapping open ground (or dragging the pin) moves your own position.
-- **Facade sun hours** for the selected day, summer solstice and winter solstice, with time windows (e.g. `13:40–18:10`).
-- **Shadows from surrounding buildings** (OpenStreetMap footprints and heights, multipolygons and building parts), using exact ray–polygon intersection up to 400 m.
-- **Sloping ground and distant hills.** Building base elevation and a horizon profile (600 m – 8 km) come from the Copernicus GLO-90 elevation model.
-- **Floor / window height**, with an optional estimate from GPS altitude and a ❗ warning when the floor doesn't fit the building.
-- **Compass mode:** the map rotates with the phone, a "house I'm facing" picker, and wall-based compass calibration that covers magnetic declination and device error.
-- **Season buttons** (spring/summer/autumn/winter, hemisphere-aware) and **▶ day animation**.
-- **Sky plot** with the day's sun path, the horizon profile and the facade plane.
-- **Local time of the place**, not of your browser: the time zone is looked up per location, so checking a flat in another country gives correct times.
-- **History** of checked facades, kept on the device (localStorage).
-- **Height confidence ❗:** when most buildings that could shade the selected spot have no height in OpenStreetMap, a ❗ appears on the map; tapping it explains what was assumed and links to OpenStreetMap to fix it.
-- **First-run card** explaining each permission and why it's needed, before the browser asks. Reopen it any time with ℹ️.
-- **Retry:** if a data service doesn't respond, the app says so, offers ↻ Try again and retries once by itself. Successful downloads are cached on the device.
-- **Languages:** English, Svenska, Türkçe, Deutsch, Español, Français, picked automatically from the browser and switchable in the panel.
+- **The answer first:** today / summer / winter hours as big tiles, the time windows below, and a **confidence chip** ("Confidence: medium · 4 h 56 m – 7 h 53 m"). Tap it to see the range for each day and what was assumed.
+- **Your floor, front and centre.** The floor picker sits above the result. SunPeek also finds the **first floor with no shadow from other buildings**, so it tells you when a higher floor would make no difference.
+- **Shadows you can see:** a map layer draws every building's shadow at the selected time; the buildings that shade the selected wall during the day are outlined red, the one shading it right now is filled.
+- **Seasons and time:** season buttons (hemisphere-aware), a time slider, a day animation, and the sky plot with the sun's path, the horizon and the wall.
+- **Search or tap:** address search (or `lat, lon`); searching picks the building and its most sun-facing long wall automatically. Links of the form `https://sunpeek.uk/?at=57.6889,11.9223` open straight on that wall.
+- **Phone compass:** the map rotates with the phone, and a "house I'm facing" picker finds the wall in front of you.
+- **Solar energy (optional, folded away):** angle of incidence, clear-sky energy per m², and a conservative yearly range per installed kWp from three years of measured sunshine, including the share of an average EU household's electricity.
+- **Honest about uncertainty:** a warning when most nearby building heights are unknown, the confidence range above, and short notes kept in (i) tips so the screen stays light.
+- **Local time of the place**, 12/24-hour setting, six languages (English, Svenska, Türkçe, Deutsch, Español, Français), light and dark mode.
 
 ## How it works
 
-Everything runs in the browser; there is no backend. The app is `index.html` + `app.js` + `sun.js` (math) + `i18n.js` (strings), served as static files.
+The calculation runs in the browser; a small shared cache on the server makes data arrive faster for everyone.
 
-| What | Source |
+| What | Source (primary → backup) |
 |---|---|
-| Sun position, sunrise/sunset, solar noon | NOAA solar calculator algorithm with Bennett refraction (`sun.js`) |
-| Buildings | OpenStreetMap via the Overpass API |
-| Ground elevation, horizon | Copernicus GLO-90 via the Open-Meteo elevation API |
-| Time zone of the location | Open-Meteo (`timezone=auto`) |
-| Addresses in history | Nominatim reverse geocoding (one request per saved facade) |
-| Imagery | Esri World Imagery |
-| Map | Leaflet + leaflet-rotate |
-| Address search | Nominatim (on submit only, per its usage policy) |
-| Icons | [Lucide](https://lucide.dev) (ISC License), inlined as an SVG sprite |
+| Sun position, sunrise/sunset | NOAA solar algorithm with Bennett refraction (`sun.js`) |
+| Buildings | SunPeek shared cache → OpenStreetMap via Overpass (mirrors) → Overture Maps building tiles |
+| Ground elevation, distant hills | SunPeek cache → AWS Terrain Tiles (terrarium) → Open-Meteo (Copernicus GLO-90) |
+| Time zone of the place | embedded [tz-lookup](https://github.com/photostructure/tz-lookup) (no request) → Open-Meteo |
+| Address search / address of a saved wall | SunPeek cache → Nominatim → Photon (komoot) |
+| Yearly sunshine for the solar estimate | SunPeek cache → Open-Meteo archive (3 years) |
+| Imagery / map | Esri World Imagery, Leaflet + leaflet-rotate |
+| Icons | [Lucide](https://lucide.dev) (ISC), inlined |
 
-A facade is blocked by a building when the sun ray enters that building's footprint below its top: `height + base elevation − window height > distance × tan(sun elevation)`. A facade is blocked by terrain when the sun is below the horizon profile in that direction. When the sun is more than 85° off the facade normal, it counts as "behind" the facade.
+**Shadows.** A wall is in a building's shadow when the sun ray from the window enters that building below its top: `distance × tan(sun elevation) < height + base elevation − window height` (above any `min_height`). Only buildings in front of the wall within 600 m are considered, using their nearest corner. A wall is in terrain shadow when the sun is below the horizon profile (600 m – 8 km, Earth curvature and refraction included). The sun counts as on the wall while it is less than 90° off the wall's normal. Sunlight windows are found on a 5-minute grid and every sun/shade transition is then refined to about 20 seconds.
+
+**Building heights.** Measured `height` first, then `building:levels` × 3 m (or the building's own storey height when both are tagged), then the median of nearby buildings of the same type (at least three, never lowering apartments below their default), then a type default. `building:part` replaces its outline only when the parts cover most of it.
+
+**Confidence.** Every height carries an uncertainty by source: measured ±1.5 m, from floors ±(1 + 0.3 × floors) m, neighbourhood median ±35 %, type default ±45 %. The range is the lowest and highest direct sun over four corners: all surrounding buildings at the tall or the low edge, with the window 0.5 m lower or higher (raising the window can *reduce* sun under overhangs, so no direction is assumed). Confidence = 100 × (1 − range / 2 h), clamped to 0–100: high ≥ 75, medium ≥ 45. It measures how stable the answer is against the data we have, not the chance of being right: **trees and buildings missing from the map are not included.**
+
+## Data, storage and privacy
+
+- **On your device:** history and settings (localStorage); map data in IndexedDB — building cells (~550 m) 90 days, terrain tiles one year; stale data is shown at once and refreshed in the background.
+- **SunPeek's shared cache (server):** receives only what is needed to fetch map data — area cell ids (~550 m), map tile numbers, the ~10 km cell for sunshine data, your search text and, for saved walls, the wall's coordinates to look up its address. It stores the public map data it fetched (buildings 90 days, terrain one year, searches 30 days). **No IP address, account or history is stored**, and the server never accepts data from browsers, so the cache cannot be poisoned.
+- **Third parties:** if the cache cannot answer, the browser asks the sources above directly. The data card in the app (*More › SunPeek cache …*) shows every service and how many requests went to each.
 
 ## Accuracy and limits
 
-- **Building heights are the main source of error.** Where OSM has no `height` / `building:levels`, a type-based default is used. If at least 10 buildings nearby do have heights, their median is used instead. Coverage varies a lot by country. Share of buildings with a height or level tag within 400 m, measured October 2026:
+- **Building heights are the main source of error.** OSM height coverage within 400 m, measured October 2026: Stockholm Södermalm 93 %, Berlin Prenzlauer Berg 83 %, Madrid Chamberí 31 %, Malmö 26 %, Valencia 21 %, Barcelona Eixample 14 %, İstanbul Kadıköy 6 %, İzmir Karşıyaka 0.2 %. Overture Maps adds heights in some places. Adding `building:levels` in OpenStreetMap improves results for everyone.
+- **Trees, balconies, eaves and roof shapes are not modelled** (buildings are flat-topped prisms).
+- Terrain tiles are bare earth at ~15 m (near) and ~60 m (far); hills closer than 600 m come from the ground grid.
+- Phone compasses can be off by 10–15° near steel and concrete; GPS altitude by 10–30 m, so the floor estimate is only a suggestion.
 
-  | Area | Buildings | With height/levels |
-  |---|---|---|
-  | Stockholm, Södermalm | 332 | 93 % |
-  | Berlin, Prenzlauer Berg | 525 | 83 % |
-  | Madrid, Chamberí | 520 | 31 % |
-  | Malmö | 202 | 26 % |
-  | Valencia | 712 | 21 % |
-  | Barcelona, Eixample | 774 | 14 % |
-  | İstanbul, Kadıköy | 1791 | 6 % |
-  | İzmir, Karşıyaka | 899 | 0.2 % |
-
-  Where coverage is low, shadows from tall blocks are likely underestimated. Dashed outlines on the map mark estimated heights. Adding `building:levels` in OpenStreetMap improves results for everyone.
-- **Trees are not modelled.**
-- The elevation model has 90 m resolution and includes vegetation and buildings, so the horizon starts at 600 m to avoid counting nearby buildings twice.
-- **Phone compasses** can be off by 10–15° near steel and concrete. Use tap-to-pick for the facade and calibrate against a wall.
-- **GPS altitude** is often off by 10–30 m, and some Android devices report ellipsoidal height. The floor estimate is only a suggestion.
-
-## Run locally
-
-Geolocation and the compass need a secure context, and `localhost` counts as one.
+## Run it
 
 ```sh
-python3 -m http.server 8765        # quick: plain static server
-# or, exactly as in production:
-docker compose build && docker run --rm -p 127.0.0.1:8080:8080 sunpeek:local
-# open http://localhost:8765 or http://localhost:8080
+python3 -m http.server 8765                 # the app alone (no shared cache; falls back to the sources directly)
+# full stack: web + cache API + PostgreSQL, test hook on, http://localhost:8090/?e2e
+docker network create proxy_network 2>/dev/null
+PG_PASSWORD=test docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --build
 ```
 
-## Docker image
+Production uses `docker-compose.yml` alone: `sunpeek` (nginx-unprivileged, static files, `/api/` proxied), `sunpeek-api` (Node 22, `api/server.js`), `sunpeek-db` (PostgreSQL 17 on an internal network, named volume) and `sunpeek-probe` (checks every data source every 10 minutes and logs failures). Database migrations are versioned SQL files in `api/migrations`, applied in order at start-up. All containers run read-only where possible, with `cap_drop: ALL` and `no-new-privileges`; nginx sends a strict CSP and security headers, rate-limits `/api/` per visitor and keeps no access log for it.
 
-- Two-stage build: the first stage content-hashes the module URLs (so CDN caches never serve a stale `app.js`) and strips the test hook. Build with `--build-arg E2E=1` to keep the hook for end-to-end tests.
-- The runtime is `nginxinc/nginx-unprivileged:1.29-alpine` on port 8080, running as a non-root user. `docker-compose.yml` adds a read-only root filesystem, a tmpfs at `/tmp`, `cap_drop: ALL` and `no-new-privileges`. No port is published; put a reverse proxy or tunnel in front of it.
-- `nginx.conf` serves only GET/HEAD and returns 404 for unknown paths. It sets these headers:
-  - a strict Content-Security-Policy: scripts only from self and unpkg with SRI, network only to the data services used;
-  - `frame-ancestors 'self'`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy` and HSTS.
-- Leaflet and leaflet-rotate load from unpkg with Subresource Integrity hashes.
-
-Tests (Node 20+):
+## Tests
 
 ```sh
-node test.mjs
+node test.mjs                                   # math, shadows, heights, confidence, time zones, i18n
+(cd api && DATABASE_URL=postgres://… node test.mjs)  # cache API against a real PostgreSQL and fake upstreams
+sh e2e/smoke.sh                                 # headless Chrome: the app loads, places a point and draws
+# end-to-end: open http://localhost:8090/?e2e in a browser, add <script src=/e2e/run.js>, then
+#   await E2E_LOAD(); for (const n of E2E.names) console.log(n, await E2E.run(n))
 ```
 
-They check the sun position against an independent NOAA implementation and published sunrise/sunset times, the shadow and terrain logic, time zones, height confidence, and that every language has every key and placeholder.
-
-End-to-end tests (`e2e/run.js`, 18 scenarios / ~125 checks, including a regression test for searching while GPS tracking is on) drive the real app in a phone-sized iframe: first-run card, all six languages, tapping walls and open ground (map recentres), address search, back to my location, seasons and day animation (both hemispheres), polar night, compass and calibration, floor stepper and warning, touch-target sizes and aria-labels, the ❗ card, history, offline + retry, language switch and desktop layout. With the local server (or an `E2E=1` container) running, open any page on that origin, evaluate `e2e/run.js` in the console, then `await E2E.run('tapping')` (names in `E2E.names`). They use live data services, so the first run is slow.
-
-## Permissions on phones
-
-| Permission | Why | Without it |
-|---|---|---|
-| 📍 Location | Puts you on the map; optional floor estimate from GPS altitude | Tap the map or type coordinates |
-| 🧭 Motion & orientation | Rotates the map with the phone, finds the house you're facing | Map stays north-up; tap walls instead |
-
-On iPhone the compass permission is asked when you tap **Allow & start** (or the arrow at the top). If you denied it, reload the page and tap the arrow. Location on iPhone: Settings › Privacy & Security › Location Services › Safari Websites.
-
-## Privacy
-
-There is no account and no server-side storage. History and settings stay in your browser's localStorage. To fetch data, the browser sends the selected coordinates to Overpass, Open-Meteo, Nominatim and Esri.
+The unit tests check the sun position against an independent NOAA implementation and published sunrise times, shadow and terrain logic, refined transition times (±30 s against a one-second scan), confidence ranges, building parts and `min_height`, the PMTiles tile ids and every language for missing keys. The end-to-end suite (22 scenarios) drives the real app: search and tapping, floors, seasons and polar night, compass, confidence card, history, offline and backup sources, the data card, languages, `?at=` links and the desktop layout. The deploy script runs the unit and smoke tests first.
 
 ## License
 
 All rights reserved. The source is published for reference. Contact the author for any other use.
 
-Third-party: icons from [Lucide](https://lucide.dev) — ISC License, Copyright (c) Lucide Icons and Contributors.
+Third-party: icons from [Lucide](https://lucide.dev) — ISC License. Time-zone lookup from [@photostructure/tz-lookup](https://github.com/photostructure/tz-lookup) — CC0. Map data © OpenStreetMap contributors (ODbL), © Overture Maps Foundation.

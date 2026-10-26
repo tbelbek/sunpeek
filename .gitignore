@@ -2,3 +2,5 @@ deploy/
 screenshot-*.png
 .DS_Store
 .shots/
+.env
+node_modules/

@@ -2,7 +2,7 @@
 // evaluate_script sourcePath ile, ya da konsola yapıştırıp çağırarak). window.E2E.run(<senaryo>) her senaryoyu
 // telefon boyutunda ayrı bir iframe'de ?e2e ile açar, gerçek tıklama/olay gönderir ve sonuçları döndürür.
 // Ağ gerektirir (Overpass, Open-Meteo, Nominatim); ilk yükleme yavaş olabilir, sonrası localStorage önbelleğinden gelir.
-async () => {
+window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir (CSP eval yasak), değeri yine fonksiyon
   const sl = ms => new Promise(r => setTimeout(r, ms));
   const gtxt = a => { const g = a.$('gstat'); return g.textContent + ' ' + (g.querySelector('.tipbtn')?.dataset.tip || ''); }; // kısa durum + (i) içindeki tam metin
   const results = [];
@@ -10,14 +10,14 @@ async () => {
   const until = async (fn, ms = 90000, step = 300) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = fn(); if (v) return v; } catch {} await sl(step); } return null; };
 
   // Uygulamayı aç: storage = localStorage'a önceden yazılacaklar (aynı köken, iframe ile paylaşılır)
-  async function open({ lang = 'sv', intro = true, w = 390, h = 844, storage = {}, clear = true } = {}) {
+  async function open({ lang = 'sv', intro = true, w = 390, h = 844, storage = {}, clear = true, q = '' } = {}) {
     if (clear) for (const k of Object.keys(localStorage)) if (!/^(ov:|zg:|hz:|tz:)/.test(k)) localStorage.removeItem(k); // veri önbellekleri kalsın
     if (lang) localStorage.setItem('lang', lang);
     if (intro) localStorage.setItem('introSeen', '1');
     for (const [k, v] of Object.entries(storage)) localStorage.setItem(k, v);
     const f = document.createElement('iframe');
     f.style.cssText = `width:${w}px;height:${h}px;position:fixed;left:-${w + 50}px;top:0;border:0`;
-    f.src = '/?e2e&' + Math.random();
+    f.src = '/?e2e&' + q + Math.random();
     document.body.appendChild(f);
     await new Promise(r => f.onload = r);
     const win = f.contentWindow, d = f.contentDocument, $ = id => d.getElementById(id), errors = [];
@@ -118,6 +118,10 @@ async () => {
       const tiles = [...a.d.querySelectorAll('.tile')].map(t => t.innerText);
       check('dokunma: 3 sonuç kutucuğu', tiles.length === 3 && tiles.every(t => /\d/.test(t)), tiles.join(' | '));
       check('dokunma: boş ipucu gizlendi', a.$('empty').style.display === 'none');
+      const chip = a.$('confchip');
+      check('güven: çip seviye ve aralık gösterir', chip && /Confidence: (high|medium|low)/.test(chip.textContent) && /–/.test(chip.querySelector('.rng').textContent), chip?.textContent);
+      chip.click(); await sl(200);
+      check('güven: çip kartı açar, 3 günlük aralık', a.$('modal').open && a.d.querySelectorAll('#card table.net tr').length === 3); a.d.getElementById('confClose')?.click();
       // geçmişe kaydedildi ve kutucuktaki yaz değeriyle aynı
       const h = JSON.parse(a.win.localStorage.getItem('gecmis') || '[]');
       check('geçmiş: kayıt oluştu', h.length === 1, h.length);
@@ -188,6 +192,8 @@ async () => {
     async compass() {
       const a = await open({ lang: 'en' });
       await a.go(51.4779, -0.0015);
+      // Claude Browser (Chrome 152) requestPermission sunuyor ve sensörü 'denied' döndürüyor: izni taklit et
+      if (a.win.DeviceOrientationEvent?.requestPermission) a.win.DeviceOrientationEvent.requestPermission = async () => 'granted';
       a.$('arrow').click(); await sl(800);
       a.orient(270); await sl(700);
       check('pusula: yön 90° (alpha 270)', /^90° E/.test(a.$('arrowtxt').textContent), a.$('arrowtxt').textContent);
@@ -216,7 +222,7 @@ async () => {
       const b = a.nearestBuilding(); await a.tapLatLng(...a.toLatLng(b.cx, b.cy)); await until(() => a.sp.house, 5000);
       await until(() => !a.$('clearK').hidden, 15000);
       const c = a.sp.house.clear?.k;
-      check('kat: gölgenin bittiği ilk kat bulundu ve gösterildi', Number.isInteger(c) && /no shadow/.test(a.$('clearK').textContent), a.$('clearK').textContent);
+      check('kat: gölgenin bittiği ilk kat bulundu ve gösterildi', Number.isInteger(c) && /no shadow/i.test(a.$('clearK').textContent), a.$('clearK').textContent);
       a.$('kat').value = c + 10; a.$('kat').dispatchEvent(new a.win.Event('input')); await sl(300);
       check('kat: daha yukarısı uyarısız, "aynı sonuç" der', /Same result/.test(a.$('clearK').textContent) && !a.$('katwarn'), a.$('clearK').textContent);
       const top = a.sp.house.day.visH; a.$('kat').value = c; a.$('kat').dispatchEvent(new a.win.Event('input')); await sl(300);
@@ -418,7 +424,7 @@ async () => {
       await until(() => a.sp.house, 20000);
       check('koordinat: bina otomatik seçildi', a.sp.house && a.sp.house.id === b.id, a.sp.house?.id);
       check('enerji: varsayılan kapalı', !a.d.querySelector('.energy') && !a.$('surf'));
-      a.$('solarchk').click(); await sl(300);
+      a.d.querySelector('#solarbox > summary').click(); await sl(400);
       const wall = parseFloat((a.d.querySelector('.energy').innerText.match(/summer ([\d.]+)/) || [])[1]);
       a.$('surf').value = '35'; a.$('surf').dispatchEvent(new a.win.Event('change')); await sl(300);
       const roof = parseFloat((a.d.querySelector('.energy').innerText.match(/summer ([\d.]+)/) || [])[1]);
@@ -431,13 +437,20 @@ async () => {
       const tr_ = a.$('tip')?.getBoundingClientRect(), vw = a.d.documentElement.clientWidth;
       check('ipucu: dokununca açılır, ekran içinde kalır, metin görünmez değil', !a.$('tip').hidden && tr_.left >= 8 && tr_.right <= vw - 8 && tr_.top >= 8 && tr_.bottom <= a.win.innerHeight - 8 && /averages/.test(a.$('tip').textContent), JSON.stringify(tr_));
       tb.click(); await sl(50); check('ipucu: ikinci dokunuş kapatır', a.$('tip').hidden);
-      a.$('solarchk').click(); await sl(200);
+      a.d.querySelector('#solarbox > summary').click(); await sl(400);
       check('enerji: kapatınca gizlenir', !a.d.querySelector('.energy'));
-      check('veri: "SunPeek\'e giden: hiçbir şey" ve istek sayısı', /Sent to SunPeek: nothing · map data services: \d+ requests/.test(a.$('nettxt').textContent), a.$('nettxt').textContent);
-      a.$('netbtn').click(); await sl(150);
+      check('veri: "SunPeek\'e giden: hiçbir şey" ve istek sayısı', /SunPeek cache: \d+ requests · other map data services: \d+ requests/.test(a.$('nettxt').textContent), a.$('nettxt').textContent);
+      a.$('morebox').open = true; a.$('netbtn').click(); await sl(150);
       check('veri: döküm kartı servisleri listeler', a.$('modal').open && a.d.querySelectorAll('#card table.net tr').length >= 6);
       a.$('netClose').click();
       noErr('enerji/veri', a); a.close();
+    },
+    // Paylaşılan bağlantı ?at=: açılıştaki izin sorgusu konumu Greenwich'e geri atmamalı
+    async atLink() {
+      const a = await open({ lang: 'en', q: 'at=57.6935,11.9575&' });
+      await sl(4000);
+      check('bağlantı: ?at konumunda kalır', a.sp.pt && Math.abs(a.sp.pt.lat - 57.6935) < 0.001 && Math.abs(a.sp.pt.lng - 11.9575) < 0.001, a.sp.pt && `${a.sp.pt.lat},${a.sp.pt.lng}`);
+      noErr('bağlantı', a); a.close();
     },
     // 14. Masaüstü düzeni
     async desktop() {

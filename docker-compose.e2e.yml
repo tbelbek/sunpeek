@@ -1,0 +1,11 @@
+# Yerel uçtan uca test: test kancalı imaj, yalnız 127.0.0.1:8090'da yayın. Kullanım:
+#   docker network create proxy_network 2>/dev/null; PG_PASSWORD=test docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --build
+#   tarayıcıda http://localhost:8090/?e2e, ardından <script src=/e2e/run.js> + await E2E_LOAD(), E2E.run(ad)
+services:
+  sunpeek:
+    build: { args: { E2E: "1" } }
+    image: sunpeek:e2e
+    ports: ["127.0.0.1:8090:8080"]
+    volumes: ["./e2e:/usr/share/nginx/html/e2e:ro"] # Claude Browser'da <script src=/e2e/run.js> ile yüklenir, sonra E2E_LOAD()
+  probe:
+    profiles: [off]

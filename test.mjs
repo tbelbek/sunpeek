@@ -1,6 +1,6 @@
 // node test.mjs — sun.js'i bağımsız bir NOAA (Python) uygulamasına ve sunrise-sunset.org değerlerine karşı doğrular.
 import assert from 'node:assert/strict';
-import { sunpos, dayEvents, blocked, blocker, shadowRing, localize, frame, pickEdge, rayEdge, facadeDay, height, maxFloor, zoned, hmIn, heightConfidence, incidence, clearSkyDNI, annualPOA, pvYield, iam, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, HZ_D, HZ_STEP } from './sun.js';
+import { sunpos, dayEvents, blocked, blocker, shadowRing, facadeRange, localize, frame, pickEdge, rayEdge, facadeDay, height, maxFloor, zoned, hmIn, heightConfidence, incidence, clearSkyDNI, annualPOA, pvYield, iam, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, HZ_D, HZ_STEP } from './sun.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} != ${b}`);
 const utcHM = t => new Date(Math.floor(t / 60000) * 60000).toISOString().slice(11, 16); // saniyeyi keser
@@ -54,11 +54,20 @@ assert.equal(blocked(localize([el(sq(0, -20, 10, 0.4), { height: '10' })], 60, 1
   assert.equal(blocked(localize(b, 60, 18, ground).buildings, 15, 180, 1.5), true);
 }
 
-// building:part: etiketsiz dış çizgi (tahmini 12 m) atılır, 3 m'lik parça kalır -> 30°'de kesmez
+// building:part: parçalar dış çizginin çoğunu kaplıyorsa etiketsiz dış çizgi (tahmini 12 m) atılır, 3 m'lik parça kalır -> 30°'de kesmez
 {
-  const r = localize([el(sq(0, -15, 5), { building: 'yes' }, 10), el(sq(0, -15, 4), { 'building:part': 'yes', height: '3' }, 11)], 60, 18);
+  const r = localize([el(sq(0, -15, 5), { building: 'yes' }, 10), el(sq(0, -15, 4.8), { 'building:part': 'yes', height: '3' }, 11)], 60, 18);
   assert.deepEqual(r.buildings.map(b => b.id), [11]);
   assert.equal(blocked(r.buildings, 30, 180, 1.5), false);
+  // parça yalnız bir köşeyi kaplıyorsa dış çizgi kalır (yoksa binanın geri kalanı hiç gölge yapmaz)
+  const q = localize([el(sq(0, -15, 5), { building: 'yes' }, 10), el(sq(3, -12, 2), { 'building:part': 'yes', height: '3' }, 11)], 60, 18);
+  assert.deepEqual(q.buildings.map(b => b.id).sort(), [10, 11]);
+}
+// min_height: havada başlayan yapının (köprü) altından ışık geçer, üstüne çarpar
+{
+  const br = localize([el(sq(0, -20, 5), { height: '12', min_height: '8' })], 60, 18).buildings;
+  assert.equal(blocked(br, 5, 180, 1.5), false, 'ışın 1,5 m + 15 m·tan5° ≈ 3 m: köprünün altından');
+  assert.equal(blocked(br, 25, 180, 1.5), true, 'ışın ≈ 8,5–11 m: köprüye çarpar');
 }
 // Çok-poligon (relation) bina sayılır
 {
@@ -91,9 +100,19 @@ console.log('ok');
   const [flat, flon] = F.from(tap.x, tap.y), f = { lat: flat, lon: flon, az: tap.az, id: 1 };
   const noon = r => r.slots.reduce((a, s) => s.alt > a.alt ? s : a);
   const open = facadeDay({ el: [target] }, f, 1.5, 2026, 6, 21);
-  assert.equal(noon(open).state, 'vis'); assert.ok(open.visH > 8 && open.visH === open.frontH, `açık cephe ${open.visH}`);
+  assert.equal(noon(open).state, 'vis'); assert.ok(open.visH > 8 && Math.abs(open.visH - open.frontH) < 5 / 60, `açık cephe ${open.visH}`);
+  { // geçiş inceltmesi: güneşin güneye bakan duvara girdiği an (azimut 90°) saniyelik bağımsız taramayla ±30 sn içinde
+    const [s0] = open.windows[0]; let t = +s0 - 15 * 60000; while (sunpos(f.lat, f.lon, new Date(t)).az < 90) t += 1000;
+    assert.ok(Math.abs(t - s0) < 30000, `pencere başlangıcı ${new Date(s0).toISOString()} vs ${new Date(t).toISOString()}`); }
   assert.ok(open.slots.some(s => s.state === 'behind'), 'sabah/akşam güneş arkada');
   const shaded = facadeDay({ el: [target, wall] }, f, 1.5, 2026, 6, 21);
+  { // güven aralığı: alt ≤ sonuç ≤ üst; tahmini yükseklikte aralık ölçülmüşten geniş, güven düşük
+    const near = el([[-20, -30], [20, -30], [20, -14], [-20, -14], [-20, -30]], { height: '14' }, 2), guess = el([[-20, -30], [20, -30], [20, -14], [-20, -14], [-20, -30]], { building: 'apartments' }, 2);
+    const rng = e => facadeRange({ lo: { el: e, hs: 1 }, hi: { el: e, hs: -1 } }, f, 1.5, 2026, 12, 21);
+    const base = facadeDay({ el: [target, near] }, f, 1.5, 2026, 12, 21).visH, a = rng([target, near]), b = rng([target, guess]);
+    assert.ok(a.lo <= base && base <= a.hi, JSON.stringify([a, base]));
+    assert.ok(b.hi - b.lo >= a.hi - a.lo && b.conf <= a.conf, JSON.stringify([a, b]));
+  }
   assert.equal(noon(shaded).state, 'block'); assert.ok(shaded.visH < open.visH);
   // Belirsizlik: yüksekliği tahmin edilen bina env.gs ile ölçeklenir; etiketli bina etkilenmez
   const gw = el([[-20, -30], [20, -30], [20, -10], [-20, -10], [-20, -30]], { building: 'yes' }, 3);
@@ -239,3 +258,19 @@ console.log('çeviri ok');
   assert.equal(emo, null, `i18n.js'te emoji kaldı: ${emo?.[0]}`);
 }
 console.log('emoji yok ok');
+
+// Codex doğruluk incelemesi regresyonları
+{
+  // havada duran yapı (köprü/çıkma): taban 10 m, tepe 20 m, 10–30 m ileride
+  const slab = { id: 9, ring: [[-5, 10], [5, 10], [5, 30], [-5, 30], [-5, 10]], x0: -5, x1: 5, y0: 10, y1: 30, h: 20, minH: 10 };
+  assert.ok(blocked([slab], 30, 0, 0), 'alttan girip içinde yükselen ışın keser');
+  assert.ok(!blocked([slab], 70, 0, 0), 'tepeden geçen ışın kesmez');
+  assert.ok(!blocked([slab], 10, 0, 0), 'altından geçen ışın kesmez');
+  // gece yarısını aşan güneş (80°K, 21 Haziran): pencere tam gün sonunda kapanır, 23:59:50'de değil
+  const day = facadeDay({ el: [] }, { lat: 80, lon: 0, az: 180, id: null }, 1.5, 2026, 6, 21, 5, 'UTC', 0);
+  assert.equal(day.windows.length, 1); assert.equal(+day.windows[0][1], Date.UTC(2026, 5, 22), 'pencere sonu');
+  assert.equal(+day.windows[0][0], Date.UTC(2026, 5, 21), 'pencere başı');
+  // adım günü tam bölmüyor (7 dk): son parça da sayılır
+  assert.equal(+facadeDay({ el: [] }, { lat: 80, lon: 0, az: 180, id: null }, 1.5, 2026, 6, 21, 7, 'UTC', 0).windows[0][1], Date.UTC(2026, 5, 22));
+}
+console.log('codex regresyonları ok');

@@ -72,6 +72,11 @@
   .tiles { container-type: inline-size; display: grid; grid-template-columns: repeat(3, 1fr); border-radius: 12px; background: var(--soft); }
   .tile { padding: 12px 6px; text-align: center; border-left: 1px solid var(--line); } .tile:first-child { border-left: 0; }
   .tile b { display: block; font-size: clamp(13px, 4.6cqi, 18px); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; } .tile:first-child b { color: #b45309; }
+  .tile > .ic { display: block; margin: 0 auto 2px; width: 18px; height: 18px; color: var(--muted); } .tile:first-child > .ic { color: var(--accent); }
+  .chip { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin-top: 8px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--fg); font-weight: 600; text-align: left; }
+  .chip .rng { margin-left: auto; color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; } .chip > .ic { color: var(--muted); width: 18px; height: 18px; }
+  .chip .dot { background: var(--muted); } .chip.c-hi .dot { background: var(--ok); } .chip.c-mid .dot { background: #f59e0b; } .chip.c-lo .dot { background: var(--bad); }
+  .sumic { display: inline-flex; align-items: center; gap: 8px; } .sumic .ic { color: var(--accent); }
   .tile span { font-size: 13px; color: var(--muted); }
   @media (prefers-color-scheme: dark) { .tile:first-child b { color: var(--accent); } }
   .estrow { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin-bottom: 8px; padding: 8px 12px; border: 0; border-radius: 12px; background: var(--warn-bg); color: var(--warn-fg); font-size: 14px; font-weight: 600; text-align: left; }
@@ -84,6 +89,12 @@
   .say.ok { border-left-color: var(--ok); } .say.info { border-left-color: var(--link); } .say.warn { border-left-color: #f59e0b; } .say.bad { border-left-color: var(--bad); }
   .say .tipbtn { margin: -10px -8px -10px auto; }
   .calrow { display: flex; align-items: center; gap: 8px; margin-top: 8px; } .calrow .btn { flex: 1; } .calrow .tipbtn { margin: 0; }
+  /* yükleme göstergesi: masaüstünde zoom düğmelerinin solunda, telefonda mevsim çubuğunun altında sağda */
+  #spin { position: absolute; z-index: 1001; display: none; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 20px; background: var(--card); box-shadow: var(--shadow);
+    right: 12px; top: calc(136px + env(safe-area-inset-top)); } body.loading #spin { display: flex; }
+  #spin::after { content: ''; width: 18px; height: 18px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } } @media (prefers-reduced-motion: reduce) { #spin::after { animation-duration: 2.4s; } }
+  @media (min-width: 701px) { #spin { top: 10px; right: 52px; } body.loading #conf { right: 96px; } }
   #tip { position: fixed; z-index: 4000; max-width: min(320px, calc(100vw - 16px)); padding: 10px 12px; border-radius: 10px; background: var(--fg); color: var(--bg); font-size: 14px; line-height: 1.45; box-shadow: var(--shadow); }
   .energy .tipbtn { float: right; margin: -10px -10px 0 0; }
   .annual .big { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -99,8 +110,8 @@
   .field input[type=date] { height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
   /* kat: en önemli girdi — sonucun üstünde, büyük ve vurgulu */
   .floorbox { margin: 4px 0 8px; padding: 6px 6px 6px 12px; border: 2px solid var(--accent); border-radius: 14px; background: var(--accent-soft); min-height: 64px; }
-  .floorbox > label { display: flex; align-items: center; gap: 8px; color: var(--fg); font-weight: 700; font-size: 16px; } .floorbox > label .ic { color: var(--accent); }
-  .floorbox #eyeM { font-weight: 400; } .floorbox .stepper { background: var(--card); } .floorbox .stepper .iconbtn { width: 48px; height: 48px; } .floorbox #kat { width: 48px; height: 48px; font-size: 22px; }
+  .floorbox > label { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 8px; color: var(--fg); font-weight: 700; font-size: 16px; } .floorbox > label .ic { color: var(--accent); }
+  .floorbox #eyeM { grid-column: 2; font-weight: 400; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .floorbox .stepper { background: var(--card); } .floorbox .stepper .iconbtn { width: 48px; height: 48px; } .floorbox #kat { width: 48px; height: 48px; font-size: 22px; }
   .stepper { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
   .stepper .iconbtn { width: 44px; height: 44px; border-radius: 0; }
   #kat { width: 40px; height: 44px; border: 0; background: transparent; text-align: center; font-weight: 700; -moz-appearance: textfield; }
@@ -196,6 +207,7 @@
   </div>
   <button id="conf" style="display:none" aria-haspopup="dialog"><svg class="ic" aria-hidden="true"><use href="#i-triangle-alert"/></svg><span id="conftxt"></span></button>
 </div>
+<div id="spin" role="status" data-t-aria="loadingData" data-t-title="loadingData"></div>
 <div id="fabs">
   <button id="geo" class="fab" data-t-aria="myLoc"><svg class="ic" aria-hidden="true"><use href="#i-locate"/></svg></button>
   <button id="shadowbtn" class="fab" data-t-aria="shadows" data-t-title="shadows" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg></button>
@@ -215,10 +227,10 @@
   <div id="now"></div>
   <button id="look" class="btn" hidden><svg class="ic" aria-hidden="true"><use href="#i-locate"/></svg><span data-t="look"></span></button>
   <div id="gstat"></div>
-  <svg id="sky" viewBox="-115 -115 230 230"></svg>
   <div id="rel"></div>
-  <div id="pos" class="muted" style="text-align:center;margin-top:4px"></div>
-  <button id="netbtn" class="estrow netrow" type="button" aria-haspopup="dialog"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg><span id="nettxt"></span><u data-t="details"></u></button>
+  <details id="skybox" class="sec"><summary><span class="sumic"><svg class="ic" aria-hidden="true"><use href="#i-compass"/></svg><span data-t="skyTitle"></span></span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+    <svg id="sky" viewBox="-115 -115 230 230"></svg>
+    <div id="pos" class="muted" style="text-align:center;margin-top:4px"></div></details>
   <details id="histbox" class="sec"><summary><span><span data-t="history"></span> (<span id="hcount">0</span>)</span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div id="hist"></div></details>
   <details id="morebox" class="sec"><summary><span data-t="more"></span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
     <div class="field"><label for="lang"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg></label><select id="lang" aria-label="Language"></select></div>
@@ -230,6 +242,7 @@
       <tr><td data-t="altAz"></td><td id="altaz"></td></tr>
     </table>
     <div id="bstat" class="muted" style="margin-top:8px"></div>
+    <button id="netbtn" class="estrow netrow" type="button" aria-haspopup="dialog"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg><span id="nettxt"></span><u data-t="details"></u></button>
   </details>
 </details></div>
 <script type="module" src="./app.js"></script>
