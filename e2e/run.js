@@ -55,7 +55,7 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
       const a = await open({ lang: 'tr', intro: false });
       check('intro: kart açık', a.$('modal').open);
       const c = a.$('card').innerText;
-      check('intro: izin açıklamaları var', /Konum/.test(c) && /Hareket ve yön/.test(c) && /sunucuda/.test(c), c);
+      check('intro: izin açıklamaları ve sunucuda saklama süresi var', /Konum/.test(c) && /Hareket ve yön/.test(c) && /30 gün/.test(c) && /IP/.test(c), c);
       check('intro: iki düğme', a.$('introGo') && a.$('introSkip'));
       a.$('introSkip').click(); await sl(300);
       check('intro: Adres ara kartı kapatır ve aramaya odaklar', !a.$('modal').open && a.d.activeElement === a.$('coord'));
@@ -283,11 +283,12 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
       await a.go(51.4779, -0.0015);
       const realFetch = a.win.fetch;
       a.win.fetch = () => Promise.reject(new Error('offline'));
-      await a.go(+(44 + Math.random() * 12).toFixed(4), +(-4 + Math.random() * 30).toFixed(4)); // geniş alan: arazi karosu da önbellekte olmasın
+      await a.go(+(51.40 + Math.random() * 0.1).toFixed(4), +(-0.20 + Math.random() * 0.1).toFixed(4)); // her koşuda önbellekte olmayan bina hücresi
       await until(() => a.$('retry'), 15000);
       const t = gtxt(a);
       check('ağ hatası: görünür bina mesajı', /Couldn't load buildings/.test(t), t);
-      check('ağ hatası: arazi mesajı', /ground elevation|horizon/.test(t), t);
+      // arazi karoları önceki koşulardan tarayıcıda kalmış olabilir: o zaman arazi yüklenmiştir ve mesaj beklenmez
+      check('ağ hatası: arazi mesajı (arazi yüklenemediyse)', a.sp.last?.ground ? true : /ground elevation|horizon/.test(t), t);
       check('ağ hatası: ↻ Tekrar dene düğmesi', a.$('retry'));
       a.$('time').value = 720; a.$('time').dispatchEvent(new a.win.Event('input')); await sl(200);
       const green = Object.values(a.sp.map._layers).filter(l => l.options?.color === '#1ad940').length;

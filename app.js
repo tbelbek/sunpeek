@@ -10,7 +10,7 @@ const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.
 const map = L.map('map', { rotate: true, touchRotate: false, rotateControl: false, bearing: 0, zoomControl: false }).setView([51.4779, -0.0015], 17);
 L.control.zoom({ position: 'topright' }).addTo(map); // telefonda gizli (iki parmak); sol üst arama, sağ alt düğmeler
 // Veri şeffaflığı: bu oturumda hangi servise kaç istek gitti (SunPeek'in kendi sunucusuna hiçbiri gitmez)
-const NET = { sunpeek: 0, overpass: 0, overture: 0, elev: 0, terr: 0, tz: 0, nom: 0, photon: 0, tiles: 0, irr: 0 };
+const NET = { sunpeek: 0, overpass: 0, overture: 0, elev: 0, terr: 0, tz: 0, photon: 0, tiles: 0, irr: 0 };
 // Servis sağlığı: her istek buradan geçer; hata/yanıtsızlık servis başına saklanır, konsola yazılır, döküm kartında görünür
 const NETERR = {};
 function svcFail(k, msg) { NETERR[k] = { msg: String(msg).slice(0, 80), t: new Date() }; console.warn('[SunPeek] servis sorunu:', k, msg); }
@@ -27,7 +27,9 @@ async function sfetch(k, url, opt) {
 async function backup(k, fn) { net(k); try { return await fn(); } catch (e) { svcFail(k, e.name === 'TimeoutError' ? 'timeout' : e.message); throw e; } }
 function net(k) { NET[k]++; const el = document.getElementById('nettxt'); if (el) el.textContent = tr('netLine', { s: tr('reqs', { n: NET.sunpeek }), n: Object.values(NET).reduce((a, b) => a + b, 0) - NET.sunpeek }); }
 const tiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-  maxZoom: 20, maxNativeZoom: 19, attribution: 'Esri World Imagery · buildings © OpenStreetMap'
+  // Atıflar: Esri temel harita koşulu ("Powered by Esri" + görüntü kaynakları), OSM ODbL (katkıcılar + lisans bağlantısı),
+  // AWS Terrain Tiles kaynak listesi, Open-Meteo CC BY 4.0. Overture yalnız kullanıldığında eklenir (useOverture).
+  maxZoom: 20, maxNativeZoom: 19, attribution: '<a href="https://www.esri.com" target="_blank" rel="noopener">Powered by Esri</a> · imagery: Esri, Maxar, Earthstar Geographics, GIS User Community · buildings © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL) · terrain: <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">AWS Terrain Tiles</a> · sunshine: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0)'
 });
 tiles.on('tileloadstart', () => net('tiles')).on('tileerror', () => svcFail('tiles', 'tile error')).addTo(map); // dinleyici önce: ilk karolar da sayılır
 const sLayer = L.layerGroup().addTo(map), bLayer = L.layerGroup().addTo(map), rLayer = L.layerGroup().addTo(map);
@@ -301,21 +303,15 @@ function saveHist({ day, sum, win, fmt }) {
   putHist([e, ...list.filter(x => x.key !== key)]);
   if (!e.addr) lookupAddr(e);
 }
-// Nominatim kullanım politikası: uygulama genelinde ≤1 istek/sn, toplu sorgu yok. Tüm çağrılar bu kuyruktan geçer.
-let nomChain = Promise.resolve();
-function nominatim(url) {
-  const run = nomChain.then(() => { return sfetch('nom', url, { signal: AbortSignal.timeout(10000) }); });
-  nomChain = run.catch(() => {}).then(() => new Promise(r => setTimeout(r, 1100)));
-  return run;
-}
+// Adres arama/çözme: önce SunPeek sunucusu (Photon ana, Nominatim yedek; Nominatim'in 1 istek/sn kuralı orada tek sırada
+// uygulanır). Sunucuya ulaşılamazsa tarayıcı doğrudan yalnız Photon'a gider: Nominatim'e dağıtık istek gönderilmez.
 const addrPending = new Set();
 async function lookupAddr(e, retried = false) {
   if (addrPending.has(e.key)) return; // aynı kayıt için tek istek
   addrPending.add(e.key);
   try {
     const srv = await sfetch('sunpeek', `/api/reverse?lang=${lang}&lat=${e.lat.toFixed(5)}&lon=${e.lon.toFixed(5)}`, { signal: AbortSignal.timeout(12000) }).catch(() => null);
-    const r = srv?.ok ? srv : await nominatim(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=${lang}&lat=${e.lat.toFixed(6)}&lon=${e.lon.toFixed(6)}`);
-    const a = (await r.json()).address ?? {};
+    const a = (srv?.ok ? await srv.json() : await photonReverse(e.lat, e.lon)).address ?? {};
     const addr = [[a.road, a.house_number].filter(Boolean).join(' '), a.city ?? a.town ?? a.village ?? a.suburb].filter(Boolean).join(', ');
     if (addr) putHist(hist().map(x => x.key === e.key ? { ...x, addr: addr.slice(0, 200) } : x));
     addrPending.delete(e.key);
@@ -483,7 +479,7 @@ async function viaServer(keys) {
   if (missing.length) throw new Error('buildings: server could not fetch ' + missing.length + ' cells');
   return by;
 }
-const useOverture = () => map.attributionControl.addAttribution('© <a href="https://overturemaps.org" target="_blank" rel="noopener">Overture Maps</a>');
+const useOverture = () => map.attributionControl.addAttribution('buildings: <a href="https://docs.overturemaps.org/attribution/" target="_blank" rel="noopener">© Overture Maps Foundation</a> (ODbL)');
 async function fetchOverpass([s, w, n, e]) { // kutu: güney, batı, kuzey, doğu (kış güneşi alçak: 30 m bina ~340 m'ye gölge düşürür)
   const a = `${s.toFixed(4)},${w.toFixed(4)},${n.toFixed(4)},${e.toFixed(4)}`;
   const q = `[out:json][timeout:60];(way(${a})["building"];way(${a})["building:part"];relation(${a})["building"];);out tags geom;`;
@@ -766,11 +762,9 @@ $('sform').onsubmit = async e => {
     let res;
     try {
       const srv = await sfetch('sunpeek', `/api/search?lang=${lang}&q=${encodeURIComponent(q.slice(0, 200))}`, { signal: AbortSignal.timeout(12000) }).catch(() => null);
-      if (srv?.ok) res = await srv.json();
-      else { const r = await nominatim(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=${lang}&q=${encodeURIComponent(q.slice(0, 200))}`);
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      res = await r.json(); }
-    } catch (err) { try { res = await photon(q); } catch { throw err; } } // yedek: Photon (komoot), aynı OSM verisi
+      if (!srv?.ok) throw new Error(srv ? 'HTTP ' + srv.status : 'server');
+      res = await srv.json();
+    } catch (err) { try { res = await photon(q); } catch { throw err; } } // sunucu yoksa doğrudan Photon (komoot), aynı OSM verisi
     res = res.filter(x => Number.isFinite(+x.lat) && Number.isFinite(+x.lon) && Math.abs(+x.lat) <= 90 && Math.abs(+x.lon) <= 180);
     if (seq !== searchSeq) return; // daha yeni bir arama ya da seçim var
     box.innerHTML = res.length ? '' : `<span class="muted">${tr('noResults')}</span>`;
@@ -789,6 +783,12 @@ async function photon(q) {
   return ((await r.json()).features ?? []).map(f => { const p = f.properties ?? {}, [lon, lat] = f.geometry?.coordinates ?? [];
     return { lat, lon, osm_type: { W: 'way', R: 'relation', N: 'node' }[p.osm_type], osm_id: p.osm_id,
       display_name: [[p.name, [p.street, p.housenumber].filter(Boolean).join(' ')].filter(Boolean).join(', '), p.city, p.country].filter(Boolean).join(', ') }; });
+}
+async function photonReverse(lat, lon) {
+  const r = await sfetch('photon', `https://photon.komoot.io/reverse?limit=1&lat=${lat.toFixed(5)}&lon=${lon.toFixed(5)}`, { signal: AbortSignal.timeout(10000) });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const p = (await r.json()).features?.[0]?.properties ?? {};
+  return { address: { road: p.street ?? (p.housenumber ? p.name : undefined), house_number: p.housenumber, city: p.city ?? p.town ?? p.village ?? p.district } };
 }
 // Kat: − / + düğmeleri
 for (const [id, d] of [['katminus', -1], ['katplus', 1]]) $(id).onclick = () => { $('kat').value = Math.max(0, kat() + d); katSrc = null; draw(); };
@@ -869,10 +869,10 @@ function showIntro(help = false) {
 }
 $('helpbtn').onclick = () => showIntro(true);
 $('netbtn').onclick = () => {
-  const errOf = { dsSunpeek: 'sunpeek', dsOverpass: 'overpass', dsOverture: 'overture', dsElev: 'elev', dsTerr: 'terr', dsTZ: 'tz', dsNom: 'nom', dsPhoton: 'photon', dsIrr: 'irr', dsTiles: 'tiles' };
+  const errOf = { dsSunpeek: 'sunpeek', dsOverpass: 'overpass', dsOverture: 'overture', dsElev: 'elev', dsTerr: 'terr', dsTZ: 'tz', dsPhoton: 'photon', dsIrr: 'irr', dsTiles: 'tiles' };
   const row = (k, n) => { const e = NETERR[errOf[k]]; return `<tr><td>${esc(tr(k))}${e ? `<div class="bad">${esc(tr('svcErr', { e: e.msg, t: e.t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', ...H12() }) }))}</div>` : ''}</td><td>${n == null ? '' : esc(tr('reqs', { n }))}</td></tr>`; };
   openCard(`<h2 id="cardtitle">${tr('netTitle')}</h2><p>${tr('netOwn')}</p>
-    <table class="net">${row('dsSunpeek', NET.sunpeek)}${row('dsOverpass', NET.overpass)}${NET.overture ? row('dsOverture', NET.overture) : ''}${row('dsTerr', NET.terr)}${NET.elev ? row('dsElev', NET.elev) : ''}${NET.tz ? row('dsTZ', NET.tz) : ''}${row('dsNom', NET.nom)}${NET.photon ? row('dsPhoton', NET.photon) : ''}${row('dsIrr', NET.irr)}${row('dsTiles', NET.tiles)}${row('dsCdn')}${row('dsCf')}</table>
+    <table class="net">${row('dsSunpeek', NET.sunpeek)}${row('dsOverpass', NET.overpass)}${NET.overture ? row('dsOverture', NET.overture) : ''}${row('dsTerr', NET.terr)}${NET.elev ? row('dsElev', NET.elev) : ''}${NET.tz ? row('dsTZ', NET.tz) : ''}${NET.photon ? row('dsPhoton', NET.photon) : ''}${row('dsIrr', NET.irr)}${row('dsTiles', NET.tiles)}${row('dsCdn')}${row('dsCf')}</table>
     <div class="actions"><button class="btn" id="netClose">${tr('close')}</button></div>`);
   $('netClose').onclick = closeCard;
 };
@@ -953,7 +953,7 @@ function openConf() {
 
 // Açılış: ilk ziyarette tanıtım kartı (izinler oradan istenir). Sonraki ziyaretlerde izin zaten verilmişse doğrudan başla.
 // E2E test kancası (yalnız ?e2e ile): iç duruma salt okunur erişim, e2e/run.js kullanır
-if (new URLSearchParams(location.search).has('e2e')) window.__sp = { map, frame, get pt() { return pt; }, get house() { return house; }, get B() { return B; } };
+if (new URLSearchParams(location.search).has('e2e')) window.__sp = { map, frame, get pt() { return pt; }, get house() { return house; }, get B() { return B; }, get last() { return last; } };
 drawHeading(); // üstteki ok, konum gelmeden de durumunu göstersin
 // Bağlantıyla konum: ?at=enlem,boylam — o noktaya gider ve oradaki binanın duvarını seçer (paylaşılabilir link).
 // Varsayılan açılış (izin sorgusu, Greenwich) atlanır: asenkron sorgu sonradan dönüp bağlantıdaki konumu eziyordu.

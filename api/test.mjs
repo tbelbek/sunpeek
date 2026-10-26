@@ -19,9 +19,15 @@ const fake = http.createServer((req, res) => {
 }).listen(0);
 process.env.OVERPASS_URLS = `http://127.0.0.1:${fake.address().port}/`;
 // Diğer kaynaklar için sahte sunucu: arazi PNG, ışınım arşivi, Nominatim
-let up = 0;
+let up = 0, photonDown = false, nomHits = 0;
 const up2 = http.createServer((req, res) => {
   up++; const u = new URL(req.url, 'http://x');
+  if (u.pathname.startsWith('/photon/')) { // Photon: ana adres kaynağı (GeoJSON)
+    if (photonDown) { res.writeHead(503); return res.end(); }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ features: [{ geometry: { coordinates: [11.9223, 57.6889] }, properties: { street: 'Ärlegatan', housenumber: '40', city: 'Göteborg', osm_type: 'W', osm_id: 7 } }] }));
+  }
+  if (u.pathname === '/search' || u.pathname === '/reverse') nomHits++;
   if (u.pathname.startsWith('/terrarium/')) { res.writeHead(200, { 'Content-Type': 'image/png' }); return res.end(Buffer.from([137, 80, 78, 71])); }
   if (u.pathname === '/archive') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ hourly: { time: [1700000000], direct_normal_irradiance: [500.4], diffuse_radiation: [null] } })); }
   if (u.pathname === '/search') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify([{ lat: '57.6889', lon: '11.9223', display_name: 'Ärlegatan 40' }])); }
@@ -29,7 +35,7 @@ const up2 = http.createServer((req, res) => {
   res.writeHead(404); res.end();
 }).listen(0);
 const U2 = `http://127.0.0.1:${up2.address().port}`;
-process.env.TERRAIN_URL = U2 + '/terrarium'; process.env.ARCHIVE_URL = U2 + '/archive'; process.env.NOMINATIM_URL = U2;
+process.env.TERRAIN_URL = U2 + '/terrarium'; process.env.ARCHIVE_URL = U2 + '/archive'; process.env.NOMINATIM_URL = U2; process.env.PHOTON_URL = U2 + '/photon';
 process.env.MISS_WAIT_MS = '800';
 const { createServer } = await import('./server.js');
 
@@ -89,20 +95,31 @@ assert.equal((await get('/api/health')).body, 'ok');
   let r1 = await get('/api/irr?lat=57.68&lon=11.92&y1=2023&y2=2025'); assert.equal(r1.body.dni[0], 500); assert.equal(r1.body.dhi[0], 0);
   await get('/api/irr?lat=57.71&lon=11.94&y1=2023&y2=2025'); assert.equal(up, 2, 'aynı 0,1° hücre önbellekten');
   assert.equal((await get('/api/irr?lat=57&lon=11&y1=2020&y2=2026')).status, 400);
-  r1 = await get('/api/search?q=%C3%84rlegatan%20%2040&lang=tr'); assert.equal(r1.body[0].display_name, 'Ärlegatan 40');
+  r1 = await get('/api/search?q=%C3%84rlegatan%20%2040&lang=tr'); assert.equal(r1.body[0].display_name, 'Ärlegatan 40, Göteborg'); assert.equal(r1.body[0].osm_type, 'way');
+  assert.equal(nomHits, 0, 'Photon ana kaynak: Nominatim\'e gidilmedi');
   await get('/api/search?q=%C3%A4rlegatan%2040&lang=tr'); assert.equal(up, 3, 'aynı arama (büyük/küçük harf, boşluk) önbellekten');
   assert.equal((await get('/api/search?q=a')).status, 400);
-  r1 = await get('/api/reverse?lat=57.688938&lon=11.922345&lang=sv'); assert.equal(r1.body.address.house_number, '40');
+  r1 = await get('/api/reverse?lat=57.688938&lon=11.922345&lang=sv'); assert.equal(r1.body.address.house_number, '40'); assert.equal(r1.body.address.road, 'Ärlegatan');
   await get('/api/reverse?lat=57.688938&lon=11.922345&lang=sv'); assert.equal(up, 4);
+  // Photon çökerse Nominatim yedeği (sunucunun tek, hız sınırlı sırasıyla)
+  photonDown = true;
+  r1 = await get('/api/search?q=other%20street&lang=en'); assert.equal(r1.body[0].display_name, 'Ärlegatan 40'); assert.equal(nomHits, 1);
+  r1 = await get('/api/reverse?lat=57.6&lon=11.9&lang=en'); assert.equal(r1.body.address.house_number, '40'); assert.equal(nomHits, 2);
+  photonDown = false;
   assert.equal((await get('/api/overture/9/1/1')).status, 400); assert.equal((await get('/api/overture/14/99999/1')).status, 400);
   // kaynak düşerse bayat kayıt yine döner
   await sql`update kv set fetched_at = now() - interval '500 days' where key like 's:%'`; up2.close();
-  r1 = await get('/api/search?q=%C3%84rlegatan%2040&lang=tr'); assert.equal(r1.status, 200); assert.equal(r1.body[0].display_name, 'Ärlegatan 40');
+  r1 = await get('/api/search?q=%C3%84rlegatan%2040&lang=tr'); assert.equal(r1.status, 200); assert.equal(r1.body[0].display_name, 'Ärlegatan 40, Göteborg');
 }
 
 // 7. temizlik: 90 günden eskiler silinir
 await sql`update cells set fetched_at = now() - interval '100 days' where i = 11538`;
 await purge(); assert.equal((await sql`select count(*)::int as n from cells where i = 11538`)[0].n, 0);
+// kaynak başına saklama: 31 günlük arama silinir, 100 günlük ışınım verisi (400 gün) kalır
+await sql`update kv set fetched_at = now() - interval '31 days' where key like 's:%' or key like 'irr:%'`;
+await purge();
+assert.equal((await sql`select count(*)::int as n from kv where key like 's:%'`)[0].n, 0, 'arama 30 günden fazla tutulmaz');
+assert.ok((await sql`select count(*)::int as n from kv where key like 'irr:%'`)[0].n > 0, 'ışınım verisi kalır');
 
 console.log('api ok');
 server.close(); fake.close(); await sql.end();

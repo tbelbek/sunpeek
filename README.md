@@ -29,7 +29,7 @@ The calculation runs in the browser; a small shared cache on the server makes da
 | Buildings | SunPeek shared cache → OpenStreetMap via Overpass (mirrors) → Overture Maps building tiles |
 | Ground elevation, distant hills | SunPeek cache → AWS Terrain Tiles (terrarium) → Open-Meteo (Copernicus GLO-90) |
 | Time zone of the place | embedded [tz-lookup](https://github.com/photostructure/tz-lookup) (no request) → Open-Meteo |
-| Address search / address of a saved wall | SunPeek cache → Nominatim → Photon (komoot) |
+| Address search / address of a saved wall | SunPeek cache (Photon by komoot, Nominatim as backup through one rate-limited queue) → Photon directly if the server is down |
 | Yearly sunshine for the solar estimate | SunPeek cache → Open-Meteo archive (3 years) |
 | Imagery / map | Esri World Imagery, Leaflet + leaflet-rotate |
 | Icons | [Lucide](https://lucide.dev) (ISC), inlined |
@@ -48,8 +48,9 @@ The height edges are calibrated, not guessed. In 9 European cities we hid OSM he
 ## Data, storage and privacy
 
 - **On your device:** history and settings (localStorage); map data in IndexedDB — building cells (~550 m) 90 days, terrain tiles one year; stale data is shown at once and refreshed in the background.
-- **SunPeek's shared cache (server):** receives only what is needed to fetch map data — area cell ids (~550 m), map tile numbers, the ~10 km cell for sunshine data, your search text and, for saved walls, the wall's coordinates to look up its address. It stores the public map data it fetched (buildings 90 days, terrain one year, searches 30 days). **No IP address, account or history is stored**, and the server never accepts data from browsers, so the cache cannot be poisoned.
-- **Third parties:** if the cache cannot answer, the browser asks the sources above directly. The data card in the app (*More › SunPeek cache …*) shows every service and how many requests went to each.
+- **SunPeek's shared cache (server):** receives only what is needed to fetch map data — area cell ids (~550 m), map tile numbers, the ~10 km cell for sunshine data, your search text and, for saved walls, the wall's coordinates to look up its address. It stores what it fetched: buildings 90 days, terrain 1 year, sunshine data 400 days, Overture tiles 60 days, **searches 30 days, addresses 90 days**. **No IP address, account or history is stored**, and the server never accepts data from browsers, so the cache cannot be poisoned. Questions or deletion requests: [issues](https://github.com/tbelbek/sunpeek/issues).
+- **Analytics:** Cloudflare Web Analytics counts page views with country, browser and referring site; no cookies, no exact location. Cloudflare also carries all traffic to sunpeek.uk.
+- **Third parties:** if the cache cannot answer, the browser asks the sources above directly (never Nominatim: its one-request-per-second rule is kept in the server's single queue). The data card in the app (*More › SunPeek cache …*) shows every service and how many requests went to each.
 
 ## Accuracy and limits
 
@@ -83,6 +84,6 @@ The unit tests check the sun position against an independent NOAA implementation
 
 ## License
 
-All rights reserved. The source is published for reference. Contact the author for any other use.
+The SunPeek source code: all rights reserved; it is published for reference. Contact the author for any other use. This applies only to the code, not to the third-party data and services below, which keep their own licences.
 
-Third-party: icons from [Lucide](https://lucide.dev) — ISC License. Time-zone lookup from [@photostructure/tz-lookup](https://github.com/photostructure/tz-lookup) — CC0. Map data © OpenStreetMap contributors (ODbL), © Overture Maps Foundation.
+Third-party: icons from [Lucide](https://lucide.dev) — ISC License. Time-zone lookup from [@photostructure/tz-lookup](https://github.com/photostructure/tz-lookup) — CC0. Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL); © [Overture Maps Foundation](https://docs.overturemaps.org/attribution/) (ODbL, with the source credits listed there). Imagery: Powered by Esri — Esri, Maxar, Earthstar Geographics and the GIS User Community. Terrain: [AWS Terrain Tiles](https://github.com/tilezen/joerd/blob/master/docs/attribution.md). Sunshine and elevation data: [Open-Meteo](https://open-meteo.com) (CC BY 4.0).

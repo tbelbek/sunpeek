@@ -11,8 +11,8 @@ import { overtureTile, OVERTURE } from '../tiles.js'; // istemciyle aynı okuyuc
 
 const DAY = 864e5;
 // Bina dışı önbellek: kaynak → [TTL gün, günlük bütçe]. Arazi durağan; Overture anahtarı sürümü içerir; ışınım anahtarı yılları içerir.
-const TTL = { terrain: 365, overture: 60, irr: 400, search: 30, reverse: 90 }, LIMIT = { terrain: 20000, overture: 5000, irr: 1000, search: 3000, reverse: 3000 };
-const NOMINATIM = process.env.NOMINATIM_URL ?? 'https://nominatim.openstreetmap.org', TERRAIN = process.env.TERRAIN_URL ?? 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium';
+const TTL = { terrain: 365, overture: 60, irr: 400, search: 30, reverse: 90 }, KV_PREFIX = { overture: 'ovt:', irr: 'irr:', search: 's:', reverse: 'r:' }, LIMIT = { terrain: 20000, overture: 5000, irr: 1000, search: 3000, reverse: 3000 };
+const PHOTON = process.env.PHOTON_URL ?? 'https://photon.komoot.io', NOMINATIM = process.env.NOMINATIM_URL ?? 'https://nominatim.openstreetmap.org', TERRAIN = process.env.TERRAIN_URL ?? 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium';
 const ARCHIVE = process.env.ARCHIVE_URL ?? 'https://archive-api.open-meteo.com/v1/archive';
 export const CELL = 0.005, TTL_DAYS = 90, MAX_CELLS = 40, MAX_SPAN = 6;
 // Sunucu herkes adına tek IP'den Overpass'a gider: günlük çekim bütçesi (aşılırsa istemci kendi yedeğine geçer) ve
@@ -138,15 +138,29 @@ export function createServer(sql, { log = console } = {}) {
       return v; }); }
     catch (e) { if (hit) return hit; throw e; }
   }
-  // Nominatim kullanım koşulu: en çok 1 istek/sn, tanımlayıcı User-Agent; sonuçlar önbellekte tutulabilir
+  // Adres: Photon (komoot) ana kaynak, Nominatim yedek. Nominatim kullanım koşulu uygulama genelinde en çok 1 istek/sn:
+  // bütün istemciler bu tek sıradan geçer (tarayıcı Nominatim'e doğrudan gitmez); sıra 5 sn'yi aşarsa istek hemen reddedilir.
   let nomNext = 0;
   async function nominatim(path) {
-    const wait = Math.max(0, nomNext - Date.now()); nomNext = Math.max(Date.now(), nomNext) + 1100;
+    const wait = Math.max(0, nomNext - Date.now());
+    if (wait > 5000) throw new Error('nominatim busy');
+    nomNext = Math.max(Date.now(), nomNext) + 1100;
     if (wait) await new Promise(r => setTimeout(r, wait));
     const r = await fetch(NOMINATIM + path, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10000) });
     if (!r.ok) throw new Error(`nominatim HTTP ${r.status}`);
     return r.json();
   }
+  async function photonJSON(path) {
+    const r = await fetch(PHOTON + path, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(8000) });
+    if (!r.ok) throw new Error(`photon HTTP ${r.status}`);
+    return (await r.json()).features ?? [];
+  }
+  const PH_LANG = new Set(['en', 'de', 'fr']); // Photon'un desteklediği diller; diğerlerinde yerel ad
+  // Photon sonuçları Nominatim biçimine çevrilir: istemci tek biçim görür
+  const phSearch = f => { const p = f.properties ?? {}, [lon, lat] = f.geometry?.coordinates ?? [];
+    return { lat: String(lat), lon: String(lon), osm_type: { W: 'way', R: 'relation', N: 'node' }[p.osm_type], osm_id: p.osm_id,
+      display_name: [[p.name, [p.street, p.housenumber].filter(Boolean).join(' ')].filter(Boolean).join(', '), p.city ?? p.town ?? p.village, p.country].filter(Boolean).join(', ') }; };
+  const phAddr = f => { const p = f?.properties ?? {}; return { address: { road: p.street ?? (p.housenumber ? p.name : undefined), house_number: p.housenumber, city: p.city ?? p.town ?? p.village ?? p.district } }; };
   const int = (v, lo, hi) => { const n = Number(v); return Number.isInteger(n) && n >= lo && n <= hi ? n : null; };
   const LANGS = new Set(['en', 'sv', 'tr', 'de', 'es', 'fr']);
   const routes = {
@@ -180,13 +194,19 @@ export function createServer(sql, { log = console } = {}) {
     async search(m, send, raw, u) {
       const q = String(u.searchParams.get('q') ?? '').trim().replace(/\s+/g, ' ').slice(0, 200), lang = LANGS.has(u.searchParams.get('lang')) ? u.searchParams.get('lang') : 'en';
       if (q.length < 2) return send(400, { error: 'bad query' });
-      send(200, await cachedJSON('search', `s:${lang}:${q.toLowerCase()}`, () => nominatim(`/search?format=jsonv2&limit=5&accept-language=${lang}&q=${encodeURIComponent(q)}`)));
+      send(200, await cachedJSON('search', `s:${lang}:${q.toLowerCase()}`, async () => {
+        try { const r = (await photonJSON(`/api/?limit=5&q=${encodeURIComponent(q)}${PH_LANG.has(lang) ? '&lang=' + lang : ''}`)).map(phSearch); if (r.length) return r; } catch (e) { log.warn?.(e.message); }
+        return nominatim(`/search?format=jsonv2&limit=5&accept-language=${lang}&q=${encodeURIComponent(q)}`);
+      }));
     },
     // /api/reverse?lat=..&lon=..&lang=tr — Nominatim adres çözme (~1 m'ye yuvarlanmış)
     async reverse(m, send, raw, u) {
       const lat = +(+u.searchParams.get('lat')).toFixed(5), lon = +(+u.searchParams.get('lon')).toFixed(5), lang = LANGS.has(u.searchParams.get('lang')) ? u.searchParams.get('lang') : 'en';
       if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return send(400, { error: 'bad point' });
-      send(200, await cachedJSON('reverse', `r:${lang}:${lat},${lon}`, () => nominatim(`/reverse?format=jsonv2&zoom=18&accept-language=${lang}&lat=${lat}&lon=${lon}`)));
+      send(200, await cachedJSON('reverse', `r:${lang}:${lat},${lon}`, async () => {
+        try { const [f] = await photonJSON(`/reverse?lat=${lat}&lon=${lon}&limit=1${PH_LANG.has(lang) ? '&lang=' + lang : ''}`); const a = phAddr(f); if (a.address.road) return a; } catch (e) { log.warn?.(e.message); }
+        return nominatim(`/reverse?format=jsonv2&zoom=18&accept-language=${lang}&lat=${lat}&lon=${lon}`);
+      }));
     },
   };
   const ROUTES = [[/^\/api\/terrain\/(\d+)\/(\d+)\/(\d+)\.png$/, 'terrain'], [/^\/api\/overture\/(\d+)\/(\d+)\/(\d+)$/, 'overture'],
@@ -206,7 +226,8 @@ export function createServer(sql, { log = console } = {}) {
   });
   const purge = () => Promise.all([
     sql`delete from cells where fetched_at < now() - make_interval(days => ${TTL_DAYS})`,
-    sql`delete from kv where fetched_at < now() - make_interval(days => ${Math.max(...Object.values(TTL))})`,
+    // her kaynak kendi süresiyle (arama 30 gün, adres 90 gün); önce en uzun süre kullanılıyordu, aramalar 400 gün kalıyordu
+    ...Object.entries(KV_PREFIX).map(([src, pre]) => sql`delete from kv where key like ${pre + '%'} and fetched_at < now() - make_interval(days => ${TTL[src]})`),
     sql`delete from blobs where fetched_at < now() - make_interval(days => ${TTL.terrain})`]).catch(e => log.warn?.(`purge ${e.message}`));
   return { server, migrate, purge };
 }
