@@ -92,7 +92,7 @@ const COL = { vis: '#1ad940', block: '#f7332a', terrain: '#a0522d', behind: '#dd
 // ---------- çizim ----------
 function draw() {
   if (!pt) return;
-  rLayer.clearLayers();
+  rLayer.clearLayers(); $('key').hidden = false;
   const [y, m, d] = ymd(), ev = dayEvents(pt.lat, pt.lng, y, m, d);
   const origin = house ? L.latLng(house.lat, house.lon) : pt;
   // doğuş/batış etiketi baskın: yönü ±10° içindeki saat etiketi çizilmez (üst üste biniyordu)
@@ -217,7 +217,7 @@ const surfEye = () => tilt < 90 ? house.h + 0.5 : eye();
 function drawHouse() {
   const el = $('house');
   $('empty').style.display = house ? 'none' : '';
-  if (!house) { el.style.display = 'none'; return; }
+  if (!house) { el.style.display = 'none'; $('fac').innerHTML = ''; return; }
   const [y] = ymd(), fmt = r => r.windows.map(([a, b]) => `${hm(a)}–${hm(b)}`).join(', ') || tr('none');
   const S = SEASON(house.lat), on = md => { const [mm, dd] = md.split('-').map(Number); return facadeCached(`${y}-${md}`, () => facadeDay(house.env, house, surfEye(), y, mm, dd, 5, TZ, tilt)); };
   const sum = on(S.summer), win = on(S.winter);
@@ -233,10 +233,12 @@ function drawHouse() {
   el.innerHTML = `<div class="tiles">${tile('calendar', dayLbl, house.day)}${tile('sun', tr('summerSol', { d: dm(S.summer) }), sum)}${tile('snowflake', tr('winterSol', { d: dm(S.winter) }), win)}</div>
     <button id="confchip" class="chip c-${lvl}" type="button" aria-haspopup="dialog"><span class="dot"></span><span>${esc(tr('confChip', { l: { hi: tr('conf_hi'), mid: tr('conf_mid'), lo: tr('conf_lo') }[lvl] }))}</span><span class="rng">${esc(dur(Rg.lo))} – ${esc(dur(Rg.hi))}</span>${icon('chevron-right')}</button>
     <div class="wins"><span>${dayLbl}</span><span>${fmt(house.day)}</span><span>${tr('summer')}</span><span>${fmt(sum)}</span><span>${tr('winter')}</span><span>${fmt(win)}</span></div>
-    <div class="facrow">${icon('house')}<div><div class="st">${esc(cap(tr('wallFacing', { dir: dirsLong[Math.round(house.az / 45) % 8] })))} · ${esc(floorName(kat()))}</div>
+`;
+  // hangi duvar seçili: kat kutusunun hemen üstünde (sonuçların altında kayboluyordu)
+  $('fac').innerHTML = `<div class="facrow">${icon('house')}<div><div class="st">${esc(cap(tr('wallFacing', { dir: dirsLong[Math.round(house.az / 45) % 8] })))}</div>
       ${addr ? `<div>${esc(addr)}</div>` : ''}</div>${tip(tr('facadeDetail', { az: house.az.toFixed(0), h: house.h.toFixed(0), est: house.guessed ? tr('estimated') : '', e: eye().toFixed(1) }))}
-      <button id="unpick" class="iconbtn" aria-label="${tr('unpick')}" title="${tr('unpick')}">${icon('x')}</button></div>
-    <details id="solarbox" class="sec"${solar ? ' open' : ''}><summary><span class="sumic">${icon('sun')}${esc(tr('solarTitle'))}</span>${icon('chevron-down')}</summary>
+      <button id="unpick" class="iconbtn" aria-label="${tr('unpick')}" title="${tr('unpick')}">${icon('x')}</button></div>`;
+  el.innerHTML += `<details id="solarbox" class="sec"${solar ? ' open' : ''}><summary><span class="sumic">${icon('sun')}${esc(tr('solarTitle'))}</span>${icon('chevron-down')}</summary>
     ${solar ? `<section class="solarcard"><div class="field"><label for="surf">${tr('surface')}</label><select id="surf">${[90, 60, 45, 35, 30, 15, 0].map(v => `<option value="${v}"${v === tilt ? ' selected' : ''}>${esc(v === 90 ? tr('surfWall') : v === 0 ? tr('surfFlat') : tr('surfRoof', { t: v }))}</option>`).join('')}</select></div>
     <div class="energy">${tip(tr('energyNote') + (tilt < 90 ? ' ' + tr('roofNote', { h: (house.h + 0.5).toFixed(0) }) : ''))}${esc(incTxt)}<br>${esc(tr('energyRow', { d: dayLbl, e: house.day.energy.toFixed(1), s: sum.energy.toFixed(1), w: win.energy.toFixed(1) }))}</div>
     <div id="annual" class="annual"></div></section>` : ''}</details>

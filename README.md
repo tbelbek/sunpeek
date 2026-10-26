@@ -9,7 +9,8 @@
 ## What you get
 
 - **The answer first:** today / summer / winter hours as big tiles, the time windows below, and a **confidence chip** ("Confidence: medium · 4 h 56 m – 7 h 53 m"). Tap it to see the range for each day and what was assumed.
-- **Your floor, front and centre.** The floor picker sits above the result. SunPeek also finds the **first floor with no shadow from other buildings**, so it tells you when a higher floor would make no difference.
+- **Your floor, front and centre.** The selected wall (direction and address) and the floor picker sit above the result; floor 0 reads "ground floor". SunPeek also finds the **first floor with no shadow from other buildings**, so it tells you when a higher floor would make no difference.
+- **Rays with a key:** green and red hourly rays from the wall, with a small "sun reaches / building blocks" key on the map.
 - **Shadows you can see:** a map layer draws every building's shadow at the selected time; the buildings that shade the selected wall during the day are outlined red, the one shading it right now is filled.
 - **Seasons and time:** season buttons (hemisphere-aware), a time slider, a day animation, and the sky plot with the sun's path, the horizon and the wall.
 - **Search or tap:** address search (or `lat, lon`); searching picks the building and its most sun-facing long wall automatically. Links of the form `https://sunpeek.uk/?at=57.6889,11.9223` open straight on that wall.
