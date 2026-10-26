@@ -79,6 +79,8 @@
   .netrow { margin: 12px 0 0; background: var(--soft); color: var(--fg); font-weight: 500; } .netrow .ic { color: var(--ok); }
   #surf { height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); max-width: 60%; }
   .energy { margin-top: 8px; font-size: 13px; }
+  .solarcard { margin-top: 8px; padding: 4px 12px 12px; border-radius: 12px; background: var(--soft); } .solarcard h3 { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; font-size: 15px; } .solarcard h3 .ic { color: var(--accent); } .solarcard .field { border-bottom-color: var(--line); }
+  .annual { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
   .chk { display: flex; align-items: center; gap: 10px; min-height: 44px; margin-top: 8px; cursor: pointer; } .chk input { width: 20px; height: 20px; accent-color: var(--blue); }
   table.net td { vertical-align: top; font-size: 13px; } table.net td:last-child { white-space: nowrap; padding-left: 8px; }
   .wins { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin-top: 10px; font-size: 13px; } .wins span:nth-child(odd) { color: var(--muted); }
@@ -130,7 +132,11 @@
     #seasons button.ico:not(.on) span { display: none; } #seasons button.ico:not(.on) { width: 44px; padding: 0; justify-content: center; } #seasons button { padding: 0 8px; font-size: 12px; } #seasons { gap: 0; }
   }
   @media (min-width: 701px) { body.closed #panel { top: auto; bottom: 24px; } /* kapalı panel masaüstünde sol alta yaslanır */
-    #top { right: auto; width: 360px; } #seasons { max-width: calc(100vw - 16px); width: max-content; } } /* masaüstünde mevsimler tam genişlik, tüm etiketler */
+    /* masaüstü: arama solda, mevsimler hemen yanında (tam genişlik, tüm etiketler); sonuçlar ve uyarı aramanın altında */
+    #top { right: 8px; display: grid; grid-template-columns: 360px auto; justify-content: start; align-items: start; }
+    #sform { grid-column: 1; grid-row: 1; } #seasons { grid-column: 2; grid-row: 1; max-width: calc(100vw - 392px); width: max-content; }
+    #sresults { grid-column: 1; grid-row: 2; } #conf { grid-column: 1; grid-row: 3; justify-self: start; }
+    #panel { top: 120px; max-height: calc(100% - 132px); } }
 </style>
 </head>
 <body>

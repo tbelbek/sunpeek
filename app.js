@@ -1,6 +1,6 @@
 // SunPeek uygulama mantığı (index.html'den ayrıldı: CSP satır içi betiğe izin vermesin diye)
 import { t as tr, lang, LANGS, dirs, dirsLong, applyStatic } from './i18n.js';
-import { zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip } from './sun.js';
+import { zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip, annualPOA, pvYield } from './sun.js';
 
 const $ = id => document.getElementById(id);
 const icon = (n, c = 'ic') => `<svg class="${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
@@ -8,7 +8,7 @@ const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.
 const map = L.map('map', { rotate: true, touchRotate: false, rotateControl: false, bearing: 0, zoomControl: false }).setView([51.4779, -0.0015], 17);
 L.control.zoom({ position: 'topright' }).addTo(map); // telefonda gizli (iki parmak); sol üst arama, sağ alt düğmeler
 // Veri şeffaflığı: bu oturumda hangi servise kaç istek gitti (SunPeek'in kendi sunucusuna hiçbiri gitmez)
-const NET = { overpass: 0, elev: 0, tz: 0, nom: 0, tiles: 0 };
+const NET = { overpass: 0, elev: 0, tz: 0, nom: 0, tiles: 0, irr: 0 };
 function net(k) { NET[k]++; const el = document.getElementById('nettxt'); if (el) el.textContent = tr('netLine', { n: Object.values(NET).reduce((a, b) => a + b, 0) }); }
 const tiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 20, maxNativeZoom: 19, attribution: 'Esri World Imagery · buildings © OpenStreetMap'
@@ -145,6 +145,38 @@ function obsState(alt, az) {
 }
 // Cephe hesabı ağır (3 gün × 288 dilim): tarih+kat değişmedikçe yeniden hesaplama
 function facadeCached(key, fn) { key += '|' + kat() + '|' + TZ + '|' + tilt; return (house.cache[key] ??= fn()); }
+// Yıllık potansiyel: geçen yılın ölçülmüş saatlik ışınımı (Open-Meteo arşivi, ~10 km hücre, tarayıcıda saklanır)
+// + bizim gölge/geliş açısı hesabı. Cephe+eğim başına bir kez hesaplanır.
+const IRR_YEAR = new Date().getUTCFullYear() - 1, IRR_YEARS = 3; // tek yıl yanıltır (ör. 2025 rekor güneşliydi): son 3 yılın ortalaması
+async function fetchIrr(lat, lon) {
+  const key = `irr:${IRR_YEAR - IRR_YEARS + 1}-${IRR_YEAR}:${lat.toFixed(1)},${lon.toFixed(1)}`;
+  const hit = lsJSON(key, x => x && Array.isArray(x.dni) && x.dni.length > 8000 * IRR_YEARS);
+  if (hit) return hit;
+  net('irr');
+  const r = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat.toFixed(2)}&longitude=${lon.toFixed(2)}&start_date=${IRR_YEAR - IRR_YEARS + 1}-01-01&end_date=${IRR_YEAR}-12-31&hourly=direct_normal_irradiance,diffuse_radiation&timezone=GMT&timeformat=unixtime`, { signal: AbortSignal.timeout(20000) });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const h = (await r.json()).hourly;
+  const d = { t0: h.time[0] * 1000, dni: h.direct_normal_irradiance.map(v => Math.round(v || 0)), dhi: h.diffuse_radiation.map(v => Math.round(v || 0)) };
+  if (!d.dni.length) throw new Error('no data');
+  lsSet(key, JSON.stringify(d));
+  return d;
+}
+function showAnnual() {
+  const el = $('annual'); if (!el || !house) return;
+  const h = house, k = String(tilt);
+  h.annual ??= {};
+  const render = v => { if ($('annual') && house === h && String(tilt) === k) $('annual').innerHTML = v; };
+  if (h.annual[k]?.html) return render(h.annual[k].html);
+  render(`<span class="muted">${esc(tr('annualLoading'))}</span>`);
+  if (h.annual[k]?.pending) return;
+  h.annual[k] = { pending: true };
+  fetchIrr(h.lat, h.lon).then(d => {
+    const H = { t: d.dni.map((_, i) => d.t0 + i * 3600000), dni: d.dni, dhi: d.dhi };
+    const eyeH = tilt < 90 ? h.h + 0.5 : eye(), poa = annualPOA(h.env, h, eyeH, tilt, H), y = pvYield(poa.total / IRR_YEARS);
+    h.annual[k] = { html: `<div class="st">${esc(tr('annualRow', { y: Math.round(y.perKWp), m: Math.round(y.perM2) }))}</div><div class="muted">${esc(tr('annualNote', { year: `${IRR_YEAR - IRR_YEARS + 1}–${IRR_YEAR}` }))}</div>` };
+    render(h.annual[k].html);
+  }).catch(e => { h.annual[k] = null; render(`<span class="muted">${esc(tr('annualFail', { e: e.message }))}</span>`); });
+}
 // Duvar: seçili kattaki pencere; çatı paneli: binanın tepesi
 const surfEye = () => tilt < 90 ? house.h + 0.5 : eye();
 
@@ -170,13 +202,15 @@ function drawHouse() {
       ${addr ? `<div>${esc(addr)}</div>` : ''}<div class="muted">${esc(tr('facadeDetail', { az: house.az.toFixed(0), h: house.h.toFixed(0), est: house.guessed ? tr('estimated') : '', e: eye().toFixed(1) }))}</div></div>
       <button id="unpick" class="iconbtn" aria-label="${tr('unpick')}" title="${tr('unpick')}">${icon('x')}</button></div>
     <label class="chk"><input type="checkbox" id="solarchk"${solar ? ' checked' : ''}> ${esc(tr('solarToggle'))}</label>
-    ${solar ? `<div class="field"><label for="surf">${tr('surface')}</label><select id="surf">${[90, 60, 45, 35, 30, 15, 0].map(v => `<option value="${v}"${v === tilt ? ' selected' : ''}>${esc(v === 90 ? tr('surfWall') : v === 0 ? tr('surfFlat') : tr('surfRoof', { t: v }))}</option>`).join('')}</select></div>
+    ${solar ? `<section class="solarcard" aria-labelledby="solarh"><h3 id="solarh">${icon('sun')}${esc(tr('solarTitle'))}</h3><div class="field"><label for="surf">${tr('surface')}</label><select id="surf">${[90, 60, 45, 35, 30, 15, 0].map(v => `<option value="${v}"${v === tilt ? ' selected' : ''}>${esc(v === 90 ? tr('surfWall') : v === 0 ? tr('surfFlat') : tr('surfRoof', { t: v }))}</option>`).join('')}</select></div>
     <div class="energy">${esc(incTxt)}<br>${esc(tr('energyRow', { d: dayLbl, e: house.day.energy.toFixed(1), s: sum.energy.toFixed(1), w: win.energy.toFixed(1) }))}</div>
-    <div class="muted">${esc(tr('energyNote') + (tilt < 90 ? ' ' + tr('roofNote', { h: (house.h + 0.5).toFixed(0) }) : ''))}</div>` : ''}
+    <div class="muted">${esc(tr('energyNote') + (tilt < 90 ? ' ' + tr('roofNote', { h: (house.h + 0.5).toFixed(0) }) : ''))}</div>
+    <div id="annual" class="annual"></div></section>` : ''}
     ${compassOn ? `<button id="calib" class="btn" style="width:100%;margin-top:8px">${icon('ruler')}${tr('calib')}</button><div class="muted" style="margin-top:4px">${tr('calibHelp', { c: (cmpOff >= 0 ? '+' : '') + cmpOff.toFixed(0) })}</div>` : ''}`;
   $('unpick').onclick = () => { house = null; drawBuildings(); draw(); };
   $('estrow')?.addEventListener('click', openConf);
   if ($('surf')) $('surf').onchange = () => { tilt = +$('surf').value; draw(); };
+  if (solar) showAnnual();
   $('solarchk').onchange = () => { solar = $('solarchk').checked; lsSet('solar', solar ? '1' : ''); if (!solar) tilt = 90; draw(); };
   if ($('calib')) $('calib').onclick = () => { // duvara bakan telefonun gerçek yönü = cephe yönü + 180°
     if (raw == null) return;
@@ -648,7 +682,7 @@ $('helpbtn').onclick = () => showIntro(true);
 $('netbtn').onclick = () => {
   const row = (k, n) => `<tr><td>${esc(tr(k))}</td><td>${n == null ? '' : esc(tr('reqs', { n }))}</td></tr>`;
   openCard(`<h2 id="cardtitle">${tr('netTitle')}</h2><p>${tr('netOwn')}</p>
-    <table class="net">${row('dsOverpass', NET.overpass)}${row('dsElev', NET.elev)}${row('dsTZ', NET.tz)}${row('dsNom', NET.nom)}${row('dsTiles', NET.tiles)}${row('dsCdn')}${row('dsCf')}</table>
+    <table class="net">${row('dsOverpass', NET.overpass)}${row('dsElev', NET.elev)}${row('dsTZ', NET.tz)}${row('dsNom', NET.nom)}${row('dsIrr', NET.irr)}${row('dsTiles', NET.tiles)}${row('dsCdn')}${row('dsCf')}</table>
     <div class="actions"><button class="btn" id="netClose">${tr('close')}</button></div>`);
   $('netClose').onclick = closeCard;
 };

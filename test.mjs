@@ -1,6 +1,6 @@
 // node test.mjs — sun.js'i bağımsız bir NOAA (Python) uygulamasına ve sunrise-sunset.org değerlerine karşı doğrular.
 import assert from 'node:assert/strict';
-import { sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, height, maxFloor, zoned, hmIn, heightConfidence, incidence, clearSkyDNI, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, HZ_D, HZ_STEP } from './sun.js';
+import { sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, height, maxFloor, zoned, hmIn, heightConfidence, incidence, clearSkyDNI, annualPOA, pvYield, iam, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, HZ_D, HZ_STEP } from './sun.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} != ${b}`);
 const utcHM = t => new Date(Math.floor(t / 60000) * 60000).toISOString().slice(11, 16); // saniyeyi keser
@@ -163,6 +163,25 @@ assert.ok(clearSkyDNI(5) < clearSkyDNI(30), 'alçak güneş daha zayıf');
   assert.ok(roof.energy > 4 && roof.energy < 9, `açık gök yaz günü 35° güney panel ~6-8 kWh/m²: ${roof.energy.toFixed(2)}`);
 }
 console.log('panel ok');
+
+// Yıllık: sentetik saatlik veri. Her saat DNI 500 / DHI 100 W/m² ve gölge yoksa, güneye bakan 35° panel duvardan fazla toplar;
+// güneydeki yüksek duvar doğrudan kısmı keser, dağınık kısım kalır.
+{
+  const t = [], dni = [], dhi = []; const t0 = Date.UTC(2025, 0, 1);
+  for (let h = 0; h < 24 * 365; h++) { t.push(t0 + h * 3600000); dni.push(500); dhi.push(100); }
+  const H = { t, dni, dhi }, f = { lat: 51.48, lon: 0, az: 180, id: 0 };
+  const roof = annualPOA({ el: [] }, f, 1.5, 35, H), wall = annualPOA({ el: [] }, f, 1.5, 90, H);
+  assert.ok(roof.beam > wall.beam && wall.beam > 0, `çatı ${roof.beam.toFixed(0)} > duvar ${wall.beam.toFixed(0)}`);
+  near(wall.diffuse, 876 * 0.5, 1, 'duvar gökyüzünün yarısını görür'); // 8760 h × 0,1 kWh × 0,5
+  const target = el([[-5, 5], [5, 5], [5, 15], [-5, 15], [-5, 5]], { height: '10' }, 1);
+  const wallEl = el([[-200, -60], [200, -60], [200, -10], [-200, -10], [-200, -60]], { height: '300' }, 2);
+  const F = frame(60, 18), [la, lo] = F.from(0, 4.6), g = { lat: la, lon: lo, az: 180, id: 1 };
+  const open = annualPOA({ el: [target] }, g, 1.5, 90, H), shaded = annualPOA({ el: [target, wallEl] }, g, 1.5, 90, H);
+  assert.ok(shaded.beam < open.beam * 0.2 && near(shaded.diffuse, open.diffuse, 1e-9, 'dağınık aynı') === undefined, `gölge doğrudanı keser ${shaded.beam.toFixed(0)}/${open.beam.toFixed(0)}`);
+  near(pvYield(1000).perKWp, 770, 1e-9, 'PR 0,77'); near(pvYield(1000).perM2, 161.7, 1e-9, '%21 × 0,77');
+  assert.equal(iam(0), 1); assert.ok(iam(60) > 0.9 && iam(85) < iam(60) && iam(90) === 0, 'IAM eğik ışıkta azalır');
+}
+console.log('yıllık ok');
 
 // Çeviriler: her dilde İngilizcedeki tüm anahtarlar ve aynı {yer tutucular} olmalı
 {

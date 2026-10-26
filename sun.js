@@ -254,6 +254,36 @@ export function clearSkyDNI(alt) {
   return 1353 * Math.pow(0.7, Math.pow(am, 0.678));
 }
 
+// Yıllık yüzey ışınımı (kWh/m²): ölçülmüş saatlik doğrudan normal (DNI) ve dağınık yatay (DHI) ışınım, W/m².
+// hourly: { t: [UTC ms, saat başı], dni: [], dhi: [] } — Open-Meteo değerleri önceki saatin ortalaması, bu yüzden güneş
+// konumu saatin ortasında (t − 30 dk) alınır. Doğrudan kısım yalnız yüzey görüyorsa ve bina/tepe kesmiyorsa sayılır;
+// dağınık kısım izotropik gök: DHI·(1+cos eğim)/2 (çevre binaların gökyüzünü kısmen kapatması ihmal edilir).
+export function annualPOA(env, f, eye, tilt, hourly) {
+  const { buildings, own } = localize(env.el, f.lat, f.lon, env.ground), all = buildings.concat(own);
+  const zEye = (env.ground ? env.ground(f.lat, f.lon) : 0) + eye, sky = (1 + Math.cos(tilt * rad)) / 2;
+  let beam = 0, diffuse = 0;
+  for (let i = 0; i < hourly.t.length; i++) {
+    const dni = hourly.dni[i] || 0, dhi = hourly.dhi[i] || 0;
+    if (dni <= 0 && dhi <= 0) continue;
+    diffuse += dhi * sky;
+    if (dni <= 0) continue;
+    const p = sunpos(f.lat, f.lon, new Date(hourly.t[i] - 1800000));
+    if (p.alt <= 0) continue;
+    const inc = incidence(p.alt, p.az, tilt, f.az);
+    if (inc >= 90 || (tilt >= 90 && Math.abs(((p.az - f.az + 540) % 360) - 180) >= 85)) continue;
+    if (env.hz && p.alt < horizonAlt(env.hz, p.az, zEye)) continue;
+    if (blocked(all, p.alt, p.az, eye, f.id)) continue;
+    beam += dni * Math.cos(inc * rad) * iam(inc);
+  }
+  return { beam: beam / 1000, diffuse: diffuse / 1000, total: (beam + diffuse) / 1000 };
+}
+// Panel camının eğik ışığı yansıtması (geliş açısı kaybı), ASHRAE modeli b0 = 0,05
+export const iam = inc => inc >= 90 ? 0 : Math.max(0, 1 - 0.05 * (1 / Math.cos(inc * rad) - 1));
+// Panel üretimi: kWh/kWp = yüzey ışınımı × performans oranı; m² başına = ışınım × modül verimi × performans oranı.
+// PR 0,77: kablo/invertör/kirlilik (~%20) ve ortalama sıcaklık kaybını içerir. PVGIS (SARAH3, %20 kayıp) ile karşılaştırılarak seçildi.
+export const PV = { pr: 0.77, eff: 0.21 };
+export const pvYield = poa => ({ perKWp: poa * PV.pr, perM2: poa * PV.eff * PV.pr });
+
 // Bir cephenin gün boyu güneşi. env: {el: Overpass elemanları, ground: zemin fn|null, hz: ufuk|null}.
 // f: {lat, lon, az, id}, cephe noktası binanın 0,4 m dışında. eye: pencerenin zeminden yüksekliği.
 // state: 'vis' güneş ulaşıyor, 'block' bina kesiyor, 'terrain' tepe kesiyor, 'behind' güneş cephenin arkasında;
