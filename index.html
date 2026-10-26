@@ -5,99 +5,194 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>SunPeek</title>
 <meta name="description" content="See how many hours of direct sun a building facade gets today, in summer and in winter. Shadows from buildings and hills, compass, history.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☀️</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f59e0b' stroke-width='2' stroke-linecap='round'><circle cx='12' cy='12' r='4'/><path d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4'/></svg>">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SunPeek">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <style>
-  html, body { margin: 0; height: 100%; font: 14px system-ui, sans-serif; }
-  #map { position: absolute; inset: 0; }
-  #panel { position: absolute; z-index: 1000; top: 10px; right: 10px; width: 300px; max-height: calc(100% - 20px); overflow: auto; box-sizing: border-box;
-           background: #fffe; border-radius: 8px; padding: 10px 12px; box-shadow: 0 2px 10px #0004; }
-  #panel summary { font-size: 16px; font-weight: 700; cursor: pointer; }
-  #panel label { display: block; margin: 6px 0 2px; color: #444; }
-  #panel input[type=text], #panel input[type=date], #panel input[type=number] { width: 100%; box-sizing: border-box; padding: 4px; }
-  #panel input[type=range] { width: 100%; }
-  .row { display: flex; gap: 6px; margin-top: 6px; } .row > * { flex: 1; }
-  button { padding: 6px 4px; cursor: pointer; font-size: 13px; } button.on { background: #ffe600; }
-  table { width: 100%; border-collapse: collapse; margin-top: 6px; } td { padding: 2px 0; } td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
-  .leg { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 4px; }
-  .hrow { display: flex; gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px solid #eee; cursor: pointer; } .hrow > div { flex: 1; }
-  .hrow button { flex: 0 0 36px; min-height: 36px; }
-  .fix { color: #c4211a; font-weight: 700; cursor: pointer; }
-  .muted { color: #666; font-size: 12px; } .st { font-weight: 600; }
-  .lbl { color: #fff; font: 600 12px system-ui; text-shadow: 0 0 3px #000, 0 0 3px #000; white-space: nowrap; }
-  #sky { display: block; width: 190px; height: 190px; margin: 6px auto 0; }
-  #house { margin-top: 8px; padding-top: 6px; border-top: 1px solid #ddd; }
-  #arrow { position: absolute; z-index: 1000; top: 8px; left: 50%; transform: translateX(-50%); background: #fffe; border-radius: 18px; padding: 4px 12px;
-           box-shadow: 0 1px 6px #0005; font-weight: 700; display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
-  #arrow b { display: inline-block; font-size: 20px; line-height: 20px; color: #1a73e8; transition: transform .2s; }
-  #seasons { position: absolute; z-index: 1000; top: 50px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; max-width: calc(100vw - 12px); overflow-x: auto; scrollbar-width: none; padding: 2px; }
-  #seasons button { min-height: 34px; padding: 4px 8px; border: 0; border-radius: 16px; background: #fffe; box-shadow: 0 1px 4px #0005; font-size: 13px; white-space: nowrap; }
-  #seasons button.on { background: #ffe600; font-weight: 700; }
-  .chip { position: absolute; z-index: 1000; border: 0; border-radius: 18px; background: #fffe; box-shadow: 0 1px 6px #0005; padding: 6px 10px; font-weight: 700; cursor: pointer; }
-  #helpbtn { top: 8px; right: 8px; }
-  #conf { top: 92px; left: 8px; color: #8a4b00; background: #ffe9c7; } #conf.low { color: #fff; background: #c4211a; }
-  #modal { position: fixed; inset: 0; z-index: 2000; background: #0007; display: flex; align-items: center; justify-content: center; padding: 12px; }
+  /* Tema: açık / koyu (sistem ayarı). 8 px ızgara, 44 px dokunma alanı, tek yazı ölçeği 12/14/16/22. */
+  :root { --bg: #fff; --fg: #1c1d21; --muted: #6b7280; --line: #e5e7eb; --card: #fff; --soft: #f3f4f6; --accent: #f59e0b; --accent-soft: #fef3c7;
+    --blue: #2563eb; --ok: #16a34a; --bad: #dc2626; --hill: #a0522d; --warn-bg: #fff7ed; --warn-fg: #9a3412; --r: 14px;
+    --shadow: 0 1px 2px rgb(0 0 0 / .08), 0 4px 14px rgb(0 0 0 / .10); color-scheme: light; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111318; --fg: #e8eaed; --muted: #9aa0a6; --line: #2a2e36; --card: #1a1d23; --soft: #23272f;
+    --accent-soft: #3d3112; --warn-bg: #3a2410; --warn-fg: #fdba74; --shadow: 0 1px 2px rgb(0 0 0 / .5), 0 4px 14px rgb(0 0 0 / .45); color-scheme: dark; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--fg); background: var(--bg); }
+  .ic { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  button, input, select { font: inherit; color: inherit; } button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); font-weight: 600; }
+  .btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; color: var(--fg); flex: none; }
+  .iconbtn:active, .btn:active, .fab:active { transform: scale(.96); }
+  .muted { color: var(--muted); font-size: 12px; } .st { font-weight: 600; }
+  #map { position: absolute; inset: 0; background: var(--soft); }
+  /* Üst: arama + mevsimler + yükseklik uyarısı */
+  #top { position: absolute; z-index: 1000; top: calc(8px + env(safe-area-inset-top)); left: 8px; right: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; pointer-events: none; }
+  #top > * { pointer-events: auto; }
+  #sform { display: flex; align-items: center; gap: 2px; width: 100%; height: 48px; padding: 0 2px 0 14px; background: var(--card); border-radius: 24px; box-shadow: var(--shadow); }
+  #sform > .ic { color: var(--muted); }
+  #coord { flex: 1; min-width: 0; height: 44px; border: 0; background: transparent; font-size: 16px; outline: none; padding: 0 6px; }
+  #sresults { width: 100%; background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+  #sresults:empty { display: none; }
+  #sresults button { display: block; width: 100%; min-height: 44px; padding: 10px 14px; border: 0; border-top: 1px solid var(--line); background: none; text-align: left; }
+  #sresults button:first-child { border-top: 0; } #sresults .muted { padding: 10px 14px; display: block; }
+  #seasons { display: flex; gap: 2px; max-width: 100%; padding: 4px; background: var(--card); border-radius: 24px; box-shadow: var(--shadow); overflow-x: auto; scrollbar-width: none; }
+  #seasons button { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 10px; border: 0; border-radius: 18px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
+  #seasons button .ic { width: 16px; height: 16px; } #seasons button.on { background: var(--accent-soft); color: var(--fg); }
+  #seasons #play { width: 36px; padding: 0; justify-content: center; color: var(--fg); }
+  #conf { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 0; border-radius: 16px; background: var(--warn-bg); color: var(--warn-fg); font-size: 13px; font-weight: 600; box-shadow: var(--shadow); }
+  #conf .ic { width: 16px; height: 16px; } #conf.low { background: var(--bad); color: #fff; }
+  /* Sağ alt: konum ve pusula düğmeleri */
+  #fabs { position: absolute; z-index: 1000; right: 12px; bottom: 24px; display: flex; flex-direction: column; gap: 10px; }
+  .fab { position: relative; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; border: 0; border-radius: 24px; background: var(--card); color: var(--fg); box-shadow: var(--shadow); }
+  .fab.on { background: var(--blue); color: #fff; }
+  #arrow b { display: flex; transition: transform .2s; }
+  #arrowtxt { position: absolute; right: 56px; top: 50%; transform: translateY(-50%); padding: 3px 10px; border-radius: 12px; background: var(--card); box-shadow: var(--shadow); font-size: 12px; font-weight: 600; white-space: nowrap; }
+  #arrowtxt:empty { display: none; }
+  #backbtn { position: absolute; z-index: 1000; left: 50%; bottom: 24px; transform: translateX(-50%); box-shadow: var(--shadow); border-radius: 22px; }
+  #backbtn[hidden] { display: none; }
+  /* Panel: masaüstünde solda kart, telefonda alt sayfa */
+  #panel { position: absolute; z-index: 1000; left: 8px; top: 160px; width: 360px; max-height: calc(100% - 172px); overflow: auto; padding: 0 16px 16px;
+    background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); }
+  #sheet > summary { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 10px; min-height: 56px; padding-top: 6px; background: var(--card); list-style: none; cursor: pointer; font-size: 16px; font-weight: 700; }
+  #sheet > summary::-webkit-details-marker, details > summary::-webkit-details-marker { display: none; }
+  #sheet > summary .chev { margin-left: auto; color: var(--muted); transition: transform .2s; } #sheet:not([open]) > summary .chev { transform: rotate(180deg); }
+  .handle { position: absolute; left: 50%; top: 6px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--line); }
+  .dot { width: 10px; height: 10px; border-radius: 5px; flex: none; background: var(--muted); }
+  .dot.vis { background: var(--ok); } .dot.block { background: var(--bad); } .dot.terrain { background: var(--hill); } .dot.behind, .dot.night { background: #9ca3af; }
+  #sum { flex: 1; min-width: 0; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hint { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border-radius: 12px; background: var(--soft); color: var(--fg); }
+  .hint .ic { color: var(--blue); margin-top: 1px; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .tile { padding: 10px 6px; border-radius: 12px; background: var(--soft); text-align: center; }
+  .tile:first-child { background: var(--accent-soft); }
+  .tile b { display: block; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; } .tile span { font-size: 12px; color: var(--muted); }
+  .wins { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin-top: 10px; font-size: 13px; } .wins span:nth-child(odd) { color: var(--muted); }
+  .facrow { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 8px 0 8px 12px; border-radius: 12px; background: var(--soft); }
+  .facrow > div { flex: 1; min-width: 0; } .facrow .ic { color: #06b6d4; }
+  .field { display: flex; align-items: center; gap: 8px; min-height: 52px; border-bottom: 1px solid var(--line); }
+  .field > label { flex: 1; min-width: 0; color: var(--muted); }
+  .field input[type=date] { height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+  .stepper { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .stepper .iconbtn { width: 40px; height: 40px; border-radius: 0; }
+  #kat { width: 40px; height: 40px; border: 0; background: transparent; text-align: center; font-weight: 700; -moz-appearance: textfield; }
+  #kat::-webkit-inner-spin-button, #kat::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  #time { width: 100%; margin: 4px 0 0; accent-color: var(--accent); }
+  #now { display: flex; align-items: center; gap: 8px; min-height: 36px; }
+  .fix { display: flex; gap: 8px; align-items: flex-start; margin-top: 8px; padding: 10px 12px; border-radius: 12px; background: var(--warn-bg); color: var(--warn-fg); font-weight: 600; cursor: pointer; }
+  #katwarn { color: var(--bad); }
+  #gstat:empty, #pos:empty, #rel:empty { display: none; }
+  #gstat { margin-top: 8px; font-size: 13px; color: var(--muted); } #gstat .btn { height: 36px; margin-top: 6px; }
+  #look { width: 100%; margin-top: 8px; } #look[hidden] { display: none; }
+  #sky { display: block; width: 180px; height: 180px; margin: 12px auto 0; }
+  #rel { text-align: center; font-weight: 600; margin-top: 4px; }
+  details.sec { border-top: 1px solid var(--line); margin-top: 12px; }
+  details.sec > summary { display: flex; align-items: center; justify-content: space-between; min-height: 48px; list-style: none; cursor: pointer; font-weight: 600; }
+  details.sec > summary .ic { color: var(--muted); transition: transform .2s; } details.sec[open] > summary .ic { transform: rotate(180deg); }
+  #lang { height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; } td { padding: 6px 0; border-top: 1px solid var(--line); } td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .leg { display: inline-block; width: 18px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+  .hrow { display: flex; gap: 8px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); cursor: pointer; } .hrow > div { flex: 1; min-width: 0; }
+  .lbl { color: #fff; font: 600 12px system-ui, sans-serif; text-shadow: 0 0 3px #000, 0 0 3px #000; white-space: nowrap; }
+  /* Kart (tanıtım, yardım, uyarı) */
+  #modal { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgb(0 0 0 / .5); }
   #modal[hidden] { display: none; }
-  #card { background: #fff; border-radius: 12px; max-width: 460px; max-height: 90vh; overflow: auto; padding: 16px 18px; box-shadow: 0 6px 30px #0008; line-height: 1.4; }
-  #card h2 { margin: 0 0 6px; font-size: 19px; } #card h3 { margin: 14px 0 4px; font-size: 15px; } #card p { margin: 4px 0; }
-  #card .actions { display: flex; gap: 8px; margin-top: 14px; } #card .actions button { flex: 1; min-height: 44px; font-size: 15px; border-radius: 8px; }
-  #card .primary { background: #1a73e8; color: #fff; border: 0; font-weight: 700; }
-  .hint { background: #eef4ff; border-radius: 8px; padding: 10px; margin-top: 8px; }
-  .tiles { display: flex; gap: 6px; margin-top: 6px; } .tile { flex: 1; background: #fff8d6; border-radius: 8px; padding: 6px 4px; text-align: center; font-size: 12px; }
-  .tile b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
-  @media (max-width: 600px) {
-    #map { bottom: 42%; } /* panel haritanın üstünü kapatmasın */
-    body.closed #map { bottom: 52px; } body.closed #panel { height: auto; }
-    button { min-height: 44px; font-size: 15px; }
-    #panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; height: 42%; max-height: none; border-radius: 12px 12px 0 0; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
-    #sky { width: 150px; height: 150px; }
-    #seasons { gap: 3px; } #seasons button { min-height: 32px; padding: 3px 5px; font-size: 12px; }
-    #helpbtn { top: 8px; right: 8px; } #arrow { max-width: 55vw; }
+  #card { width: 100%; max-width: 440px; max-height: 90vh; overflow: auto; padding: 20px; border-radius: 18px; background: var(--card); box-shadow: var(--shadow); line-height: 1.5; }
+  #card h2 { margin: 0 0 8px; font-size: 20px; } #card h3 { margin: 16px 0 6px; font-size: 15px; } #card p { margin: 6px 0; }
+  #card .perm { display: flex; gap: 10px; align-items: flex-start; } #card .perm .ic { color: var(--blue); margin-top: 2px; }
+  #card .actions { display: flex; gap: 8px; margin-top: 18px; } #card .actions .btn { flex: 1; }
+  #card a { color: var(--blue); }
+  .leaflet-control-attribution { background: var(--card) !important; color: var(--muted) !important; } .leaflet-control-attribution a { color: var(--blue) !important; }
+  .leaflet-bar a { background: var(--card) !important; color: var(--fg) !important; border-color: var(--line) !important; }
+  @media (max-width: 700px) {
+    #map { bottom: 44%; } body.closed #map { bottom: 64px; }
+    #panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; height: 44%; max-height: none; border-radius: 18px 18px 0 0; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+    body.closed #panel { height: auto; }
+    #fabs { bottom: calc(44% + 12px); } body.closed #fabs { bottom: 76px; }
+    #backbtn { bottom: calc(44% + 12px); } body.closed #backbtn { bottom: 76px; }
+    .leaflet-control-zoom { display: none; }
+    #sky { width: 160px; height: 160px; }
+    /* telefonda yalnız seçili mevsim yazıyla, diğerleri simge (etiket aria-label'da) */
+    #seasons button:not(.on) span { display: none; } #seasons button:not(.on) { width: 40px; padding: 0; justify-content: center; }
   }
+  @media (min-width: 701px) { #top { right: auto; width: 360px; } }
 </style>
 </head>
 <body>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none"><!-- Lucide icons v1.61.0, ISC License, https://lucide.dev -->
+<symbol id="i-arrow-up-from-line" viewBox="0 0 24 24"><path d="m18 9-6-6-6 6" /> <path d="M12 3v14" /> <path d="M5 21h14" /></symbol>
+<symbol id="i-calendar" viewBox="0 0 24 24"><path d="M8 2v3" /> <path d="M16 2v3" /> <rect x="3" y="3" width="18" height="18" rx="2" /> <path d="M3 9h18" /></symbol>
+<symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
+<symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6" /></symbol>
+<symbol id="i-circle-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /> <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /> <path d="M12 17h.01" /></symbol>
+<symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /> <path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z" /></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /> <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /> <path d="M2 12h20" /></symbol>
+<symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /> <path d="M3 3v5h5" /> <path d="M12 7v5l4 2" /></symbol>
+<symbol id="i-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /> <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /> <path d="M12 16v-4" /> <path d="M12 8h.01" /></symbol>
+<symbol id="i-leaf" viewBox="0 0 24 24"><path d="M11 20a10 10 0 0010-10 25.9 25.9 0 00-1.04-7.281 1 1 0 00-1.755-.325C15.833 5.5 13 5.5 9.8 6.1A7 7 0 0011 20" /> <path d="M2 21a5 5 0 012.911-4.544C7.613 15.212 8.351 15.24 11 13" /></symbol>
+<symbol id="i-locate-fixed" viewBox="0 0 24 24"><line x1="2" x2="5" y1="12" y2="12" /> <line x1="19" x2="22" y1="12" y2="12" /> <line x1="12" x2="12" y1="2" y2="5" /> <line x1="12" x2="12" y1="19" y2="22" /> <circle cx="12" cy="12" r="7" /> <circle cx="12" cy="12" r="3" /></symbol>
+<symbol id="i-locate" viewBox="0 0 24 24"><line x1="2" x2="5" y1="12" y2="12" /> <line x1="19" x2="22" y1="12" y2="12" /> <line x1="12" x2="12" y1="2" y2="5" /> <line x1="12" x2="12" y1="19" y2="22" /> <circle cx="12" cy="12" r="7" /></symbol>
+<symbol id="i-map-pin" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" /> <circle cx="12" cy="10" r="3" /></symbol>
+<symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14" /></symbol>
+<symbol id="i-navigation-2" viewBox="0 0 24 24"><polygon points="12 2 19 21 12 17 5 21 12 2" /></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="3" width="5" height="18" rx="1" /> <rect x="5" y="3" width="5" height="18" rx="1" /></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" /></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14" /> <path d="M12 5v14" /></symbol>
+<symbol id="i-rotate-ccw" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /> <path d="M3 3v5h5" /></symbol>
+<symbol id="i-ruler" viewBox="0 0 24 24"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z" /> <path d="m14.5 12.5 2-2" /> <path d="m11.5 9.5 2-2" /> <path d="m8.5 6.5 2-2" /> <path d="m17.5 15.5 2-2" /></symbol>
+<symbol id="i-satellite-dish" viewBox="0 0 24 24"><path d="M18 12a6 6 0 00-6-6" /> <path d="M2.824 10.459a8 8 0 0010.717 10.717c.558-.276.623-1.012.183-1.452l-9.448-9.448c-.44-.44-1.176-.375-1.452.183" /> <path d="M22 12A10 10 0 0012 2" /> <path d="m9 15 4-4" /></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34" /> <circle cx="11" cy="11" r="8" /></symbol>
+<symbol id="i-snowflake" viewBox="0 0 24 24"><path d="m10 20-1.25-2.5L6 18" /> <path d="M10 4 8.75 6.5 6 6" /> <path d="m14 20 1.25-2.5L18 18" /> <path d="m14 4 1.25 2.5L18 6" /> <path d="m17 21-3-6h-4" /> <path d="m17 3-3 6 1.5 3" /> <path d="M2 12h6.5L10 9" /> <path d="m20 10-1.5 2 1.5 2" /> <path d="M22 12h-6.5L14 15" /> <path d="m4 10 1.5 2L4 14" /> <path d="m7 21 3-6-1.5-3" /> <path d="m7 3 3 6h4" /></symbol>
+<symbol id="i-sprout" viewBox="0 0 24 24"><path d="M14 9.536V7a4 4 0 0 1 4-4h1.5a.5.5 0 0 1 .5.5V5a4 4 0 0 1-4 4 4 4 0 0 0-4 4c0 2 1 3 1 5a5 5 0 0 1-1 3" /> <path d="M4 9a5 5 0 0 1 8 4 5 5 0 0 1-8-4" /> <path d="M5 21h14" /></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /> <path d="M12 2v2" /> <path d="M12 20v2" /> <path d="m4.93 4.93 1.41 1.41" /> <path d="m17.66 17.66 1.41 1.41" /> <path d="M2 12h2" /> <path d="M20 12h2" /> <path d="m6.34 17.66-1.41 1.41" /> <path d="m19.07 4.93-1.41 1.41" /></symbol>
+<symbol id="i-trash-2" viewBox="0 0 24 24"><path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></symbol>
+<symbol id="i-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /> <path d="M12 9v4" /> <path d="M12 17h.01" /></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18" /> <path d="m6 6 12 12" /></symbol>
+</svg>
 <div id="map"></div>
-<div id="arrow" data-t-title="arrowTitle"><b>▲</b><span id="arrowtxt"></span></div>
-<div id="seasons">
-  <button data-s="today" data-t="today"></button><button data-s="spring" data-t="spring"></button><button data-s="summer" data-t="summer"></button>
-  <button data-s="autumn" data-t="autumn"></button><button data-s="winter" data-t="winter"></button><button id="play" data-t-title="playTitle">▶</button>
-</div>
-<button id="helpbtn" class="chip" aria-label="Help">ℹ️</button>
-<button id="conf" class="chip" style="display:none" aria-haspopup="dialog"><span aria-hidden="true">❗</span> <span id="conftxt"></span></button>
-<div id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="cardtitle"><div id="card"></div></div>
-<div id="panel"><details id="sheet" open><summary id="sum">☀️ SunPeek</summary>
-  <div id="empty" class="hint" data-t="emptyHint"></div>
-  <div id="house" style="display:none"></div>
-  <div class="row">
-    <div><label data-t="date"></label><input id="date" type="date"></div>
-    <div><label><span data-t="floorLabel"></span> <span id="eyeM" class="muted"></span> <span id="katwarn" class="fix" style="display:none">❗</span></label>
-      <div class="row" style="margin-top:0"><input id="kat" type="number" value="0" min="0" step="1"><button id="gpskat" style="flex:0 0 52px" data-t-title="gpsFloorTitle">📡</button></div></div>
+<div id="top">
+  <form id="sform" role="search"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg><input id="coord" type="search" enterkeyhint="search" autocomplete="off" data-t-ph="searchPh"><button id="go" class="iconbtn" type="submit" data-t-aria="search"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></button><button id="helpbtn" class="iconbtn" type="button" data-t-aria="helpTitle"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg></button></form>
+  <div id="sresults"></div>
+  <div id="seasons">
+    <button data-s="today" data-t-aria="today"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg><span data-t="today"></span></button><button data-s="spring" data-t-aria="spring"><svg class="ic" aria-hidden="true"><use href="#i-sprout"/></svg><span data-t="spring"></span></button><button data-s="summer" data-t-aria="summer"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg><span data-t="summer"></span></button><button data-s="autumn" data-t-aria="autumn"><svg class="ic" aria-hidden="true"><use href="#i-leaf"/></svg><span data-t="autumn"></span></button><button data-s="winter" data-t-aria="winter"><svg class="ic" aria-hidden="true"><use href="#i-snowflake"/></svg><span data-t="winter"></span></button><button id="play" data-t-aria="playTitle"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
   </div>
-  <div id="katmsg" class="fix" style="display:none;margin-top:4px"></div>
-  <label><span data-t="time"></span> <span id="tval" class="st"></span></label>
-  <input id="time" type="range" min="0" max="1439" step="5">
-  <div id="now" class="st" style="margin-top:6px"></div>
-  <div class="row"><button id="geo" data-t="geo"></button><button id="cmp" data-t="cmp"></button><button id="look" disabled data-t="look"></button></div>
-  <div id="gstat" class="muted" style="margin-top:4px"></div>
-  <div id="pos" class="muted"></div>
+  <button id="conf" style="display:none" aria-haspopup="dialog"><svg class="ic" aria-hidden="true"><use href="#i-triangle-alert"/></svg><span id="conftxt"></span></button>
+</div>
+<div id="fabs">
+  <button id="geo" class="fab" data-t-aria="myLoc"><svg class="ic" aria-hidden="true"><use href="#i-locate"/></svg></button>
+  <button id="arrow" class="fab" data-t-aria="arrowTitle"><b><svg class="ic" aria-hidden="true"><use href="#i-compass"/></svg></b><span id="arrowtxt"></span></button>
+</div>
+<button id="backbtn" class="btn" hidden><svg class="ic" aria-hidden="true"><use href="#i-locate-fixed"/></svg><span data-t="backLoc"></span></button>
+<div id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="cardtitle"><div id="card"></div></div>
+<div id="panel"><details id="sheet" open><summary><span class="handle"></span><span id="sumdot" class="dot"></span><span id="sum">SunPeek</span><svg class="ic chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+  <div id="empty" class="hint"><svg class="ic" aria-hidden="true"><use href="#i-house"/></svg><span data-t="emptyHint"></span></div>
+  <div id="house" style="display:none"></div>
+  <div class="field"><label for="date" data-t="date"></label><input id="date" type="date"></div>
+  <div class="field"><label for="kat"><span data-t="floorLabel"></span> <span id="eyeM" class="muted"></span></label>
+    <span id="katwarn" style="display:none"><svg class="ic" aria-hidden="true"><use href="#i-triangle-alert"/></svg></span>
+    <div class="stepper"><button id="katminus" class="iconbtn" type="button" aria-label="−"><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg></button><input id="kat" type="number" value="0" min="0" step="1" inputmode="numeric"><button id="katplus" class="iconbtn" type="button" aria-label="+"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button></div>
+    <button id="gpskat" class="iconbtn" type="button" data-t-aria="gpsFloorTitle"><svg class="ic" aria-hidden="true"><use href="#i-satellite-dish"/></svg></button></div>
+  <div id="katmsg" class="fix" style="display:none"></div>
+  <div class="field" style="flex-wrap:wrap;border-bottom:0;padding-top:6px"><label for="time" data-t="time"></label><span id="tval" class="st"></span><input id="time" type="range" min="0" max="1439" step="5"></div>
+  <div id="now"></div>
+  <button id="look" class="btn" hidden><svg class="ic" aria-hidden="true"><use href="#i-locate"/></svg><span data-t="look"></span></button>
+  <div id="gstat"></div>
   <svg id="sky" viewBox="-115 -115 230 230"></svg>
-  <div id="rel" class="st" style="text-align:center"></div>
-  <details id="histbox" style="margin-top:8px"><summary class="st"><span data-t="history"></span> (<span id="hcount">0</span>)</summary><div id="hist"></div></details>
-  <details id="morebox" style="margin-top:8px"><summary class="st" data-t="more"></summary>
-    <label data-t="coordLabel"></label>
-    <div class="row" style="margin-top:0"><input id="coord" type="text" placeholder="51.4779, -0.0015"><button id="go" style="flex:0 0 40px" data-t="go"></button></div>
-    <div class="row"><select id="lang" aria-label="Language"></select></div>
+  <div id="rel"></div>
+  <div id="pos" class="muted" style="text-align:center;margin-top:4px"></div>
+  <details id="histbox" class="sec"><summary><span><span data-t="history"></span> (<span id="hcount">0</span>)</span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div id="hist"></div></details>
+  <details id="morebox" class="sec"><summary><span data-t="more"></span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+    <div class="field"><label for="lang"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg></label><select id="lang" aria-label="Language"></select></div>
     <table>
       <tr><td data-t="riseSet"></td><td id="riseset"></td></tr>
       <tr><td data-t="noon"></td><td id="noon"></td></tr>
       <tr><td data-t="dayLen"></td><td id="len"></td></tr>
       <tr><td data-t="altAz"></td><td id="altaz"></td></tr>
     </table>
-    <div id="bstat" class="muted" style="margin-top:6px"></div>
+    <div id="bstat" class="muted" style="margin-top:8px"></div>
   </details>
 </details></div>
 <script type="module">
@@ -105,9 +200,10 @@ import { t as tr, lang, LANGS, dirs, applyStatic } from './i18n.js';
 import { zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip } from './sun.js';
 
 const $ = id => document.getElementById(id);
+const icon = (n, c = 'ic') => `<svg class="${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
 const map = L.map('map', { rotate: true, touchRotate: false, rotateControl: false, bearing: 0, zoomControl: false }).setView([51.4779, -0.0015], 17);
-L.control.zoom({ position: 'bottomleft' }).addTo(map); // üstte ok ve mevsim düğmeleri var
+L.control.zoom({ position: 'topright' }).addTo(map); // telefonda gizli (iki parmak); sol üst arama, sağ alt düğmeler
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 20, maxNativeZoom: 19, attribution: 'Esri World Imagery · buildings © OpenStreetMap'
 }).addTo(map);
@@ -117,7 +213,7 @@ const cone = L.polygon([], { color: '#4af', weight: 1, fillOpacity: 0.25, intera
 let acc = null, pt = null, accM = null, gAlt = null, gAltAcc = null, B = { buildings: [], own: [] }, req = 0;
 let last = null; // son çekim: {el, ground, hz, lat, lng} — binalar + zemin kotu + ufuk
 let cmpState = 'off'; // off | asking | waiting | nodata | denied | none — üstteki okta görünür
-let raw = null, heading = null, headAcc = null, compassOn = false, watchId = null, house = null, lastRender = 0, rotateOn = true, wake = null;
+let raw = null, heading = null, headAcc = null, compassOn = false, watchId = null, house = null, lastRender = 0, wake = null, gpsPt = null;
 let katSrc = null, katFix = null; // katSrc 'gps': kat GPS'ten geldi; katFix: önerilen düzeltme
 let cmpOff = +(localStorage.getItem('cmpOff') || 0); // pusula düzeltmesi (manyetik sapma + cihaz hatası), duvara göre kalibre edilir
 
@@ -182,14 +278,15 @@ function draw() {
   $('tval').textContent = hm(t);
   $('altaz').textContent = `${p.alt.toFixed(1)}° · ${p.az.toFixed(0)}° ${dirName(p.az)}`;
   if (p.alt > 0) ray(origin, p.az, 230, { color: '#ffe600', weight: 5 });
-  let st;
-  if (p.alt <= 0) st = [tr('belowHorizon'), '#555'];
+  let st, cls;
+  if (p.alt <= 0) { st = tr('belowHorizon'); cls = 'night'; }
   else if (house) {
     const s = house.day.slots.find(s => Math.abs(s.t - t) <= 150000)?.state ?? 'behind'; // 5 dk'lık dilim
-    st = { vis: [tr('fVis'), '#119a2e'], block: [tr('fBlock'), '#c4211a'], terrain: [tr('fTerrain'), '#8a4520'], behind: [tr('fBehind'), '#666'] }[s];
-  } else st = { vis: [tr('oVis'), '#119a2e'], block: [tr('oBlock'), '#c4211a'], terrain: [tr('oTerrain'), '#8a4520'] }[obsState(p.alt, p.az)];
-  $('now').textContent = st[0]; $('now').style.color = st[1];
-  $('sum').textContent = st[0] + (house ? ` · ${$('date').value === todayStr ? tr('todayLower') : dm(`${pad(m)}-${pad(d)}`)} ${tr('hours', { h: house.day.visH.toFixed(1) })}` : '');
+    cls = s; st = tr({ vis: 'fVis', block: 'fBlock', terrain: 'fTerrain', behind: 'fBehind' }[s]);
+  } else { cls = obsState(p.alt, p.az); st = tr({ vis: 'oVis', block: 'oBlock', terrain: 'oTerrain' }[cls]); }
+  $('now').innerHTML = `<span class="dot ${cls}"></span><span>${st}</span>`;
+  $('sumdot').className = 'dot ' + cls;
+  $('sum').textContent = st + (house ? ` · ${$('date').value === todayStr ? tr('todayLower') : dm(`${pad(m)}-${pad(d)}`)} ${tr('hours', { h: house.day.visH.toFixed(1) })}` : '');
   $('eyeM').textContent = `≈ ${eye().toFixed(1)} m`;
   checkKat();
 
@@ -217,7 +314,7 @@ function checkKat() {
     katFix = 0; msg = tr('notInside', { k });
   }
   $('katwarn').style.display = $('katmsg').style.display = msg ? '' : 'none';
-  $('katmsg').textContent = msg;
+  $('katmsg').innerHTML = msg ? `${icon('triangle-alert')}<span>${esc(msg)}</span>` : '';
 }
 
 // Gözlemcinin bulunduğu nokta için güneş durumu: tepe (ufuk) ya da bina kesiyor mu?
@@ -239,13 +336,13 @@ function drawHouse() {
   saveHist({ day: house.day, sum, win, fmt });
   // Önce cevap: üç büyük kutucuk (seçili gün / yaz / kış), altında saat aralıkları
   const [, mo, da] = ymd(), dayLbl = $('date').value === todayStr ? tr('today') : dm(`${pad(mo)}-${pad(da)}`);
-  const tile = (lbl, r) => `<div class="tile"><b>${tr('hours', { h: r.visH.toFixed(1) })}</b>${lbl}</div>`;
+  const tile = (lbl, r) => `<div class="tile"><b>${tr('hours', { h: r.visH.toFixed(1) })}</b><span>${lbl}</span></div>`;
   el.innerHTML = `<div class="tiles">${tile(dayLbl, house.day)}${tile(tr('summerSol', { d: dm(S.summer) }), sum)}${tile(tr('winterSol', { d: dm(S.winter) }), win)}</div>
-    <div class="muted" style="margin-top:4px">${dayLbl}: ${fmt(house.day)}<br>${tr('summer')}: ${fmt(sum)}<br>${tr('winter')}: ${fmt(win)}</div>
-    <div class="st" style="margin-top:6px">${tr('facadeHdr', { az: house.az.toFixed(0), dir: dirName(house.az) })}</div>
-    <div class="muted">${tr('facadeSub', { h: house.h.toFixed(0), est: house.guessed ? tr('estimated') : '', k: kat(), e: eye().toFixed(1) })}</div>
-    <div class="row"><button id="unpick">${tr('unpick')}</button>${compassOn ? `<button id="calib">${tr('calib')}</button>` : ''}</div>
-    ${compassOn ? `<div class="muted">${tr('calibHelp', { c: (cmpOff >= 0 ? '+' : '') + cmpOff.toFixed(0) })}</div>` : ''}`;
+    <div class="wins"><span>${dayLbl}</span><span>${fmt(house.day)}</span><span>${tr('summer')}</span><span>${fmt(sum)}</span><span>${tr('winter')}</span><span>${fmt(win)}</span></div>
+    <div class="facrow">${icon('house')}<div><div class="st">${tr('facadeHdr', { az: house.az.toFixed(0), dir: dirName(house.az) })}</div>
+      <div class="muted">${tr('facadeSub', { h: house.h.toFixed(0), est: house.guessed ? tr('estimated') : '', k: kat(), e: eye().toFixed(1) })}</div></div>
+      <button id="unpick" class="iconbtn" aria-label="${tr('unpick')}" title="${tr('unpick')}">${icon('x')}</button></div>
+    ${compassOn ? `<button id="calib" class="btn" style="width:100%;margin-top:8px">${icon('ruler')}${tr('calib')}</button><div class="muted" style="margin-top:4px">${tr('calibHelp', { c: (cmpOff >= 0 ? '+' : '') + cmpOff.toFixed(0) })}</div>` : ''}`;
   $('unpick').onclick = () => { house = null; drawBuildings(); draw(); };
   if ($('calib')) $('calib').onclick = () => { // duvara bakan telefonun gerçek yönü = cephe yönü + 180°
     if (raw == null) return;
@@ -287,8 +384,8 @@ function renderHist() {
       <div class="muted">${tr('histFacade', { dir: dirName(e.az), az: Math.round(e.az), k: e.kat, h: Math.round(e.h), est: e.guessed ? tr('estimated') : '' })}</div>
       <div class="muted">${esc(tr('histHours', { date: e.date, t: e.todayH.toFixed(1), s: e.summerH.toFixed(1), sw: e.summer, w: e.winterH.toFixed(1), ww: e.winter }))}</div>
       <div class="muted">${new Date(e.savedAt).toLocaleString(lang, { dateStyle: 'short', timeStyle: 'short' })}</div></div>
-      <button data-del="${i}" title="${tr('del')}">✕</button></div>`).join('') +
-    (list.length ? `<div class="row"><button id="hclear">${tr('clearAll')}</button></div>` : `<div class="muted">${tr('histEmpty')}</div>`);
+      <button data-del="${i}" class="iconbtn" aria-label="${tr('del')}" title="${tr('del')}">${icon('trash-2')}</button></div>`).join('') +
+    (list.length ? `<button id="hclear" class="btn" style="width:100%;margin-top:8px">${tr('clearAll')}</button>` : `<div class="muted" style="padding-bottom:8px">${tr('histEmpty')}</div>`);
   $('hclear')?.addEventListener('click', () => { if (confirm(tr('confirmClear'))) putHist([]); });
 }
 $('hist').onclick = ev => {
@@ -338,16 +435,14 @@ function drawSky() {
 
 function drawHeading() {
   const zg = pt && z0();
-  $('pos').textContent = pt ? `📍 ${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}${accM ? ` (±${Math.round(accM)} m)` : ''}` + (TZ ? ` · 🕒 ${TZ}` : '') +
+  $('pos').textContent = pt ? `${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)}${accM ? ` (±${Math.round(accM)} m)` : ''}` + (TZ ? ` · ${TZ}` : '') +
     (zg != null ? ' · ' + tr('ground', { z: zg.toFixed(0) }) : '') + (gAlt != null ? ' · ' + tr('gpsAlt', { a: gAlt.toFixed(0) }) + (gAltAcc ? ` ±${Math.round(gAltAcc)}` : '') : '') +
-    (heading != null ? ` · 🧭 ${heading.toFixed(0)}° ${dirName(heading)}${headAcc > 0 ? ` (±${Math.round(headAcc)}°)` : ''}` : '') : '';
+    (heading != null && headAcc > 0 ? ` · ±${Math.round(headAcc)}°` : '') : '';
   const live = compassOn && heading != null;
   if (live && pt) cone.setLatLngs([pt, dest(pt, heading - 15, 90), dest(pt, heading, 100), dest(pt, heading + 15, 90)]); else cone.setLatLngs([]);
-  map.setBearing(live && rotateOn ? -heading : 0);
-  // Üstteki ok: yön-yukarı modunda ok sabit (baktığın yön), kuzey-yukarı modunda baktığın yöne döner
-  $('arrow').querySelector('b').style.transform = `rotate(${live && !rotateOn ? heading : 0}deg)`;
-  $('arrowtxt').textContent = live ? `${heading.toFixed(0)}° ${dirName(heading)}${rotateOn ? '' : ` · ${dirs[0]}↑`}` :
-    tr({ off: 'aOff', asking: 'aAsking', waiting: 'aWaiting', nodata: 'aNodata', denied: 'aDenied', none: 'aNone' }[cmpState] ?? 'north');
+  map.setBearing(live ? -heading : 0); // pusula açık = baktığın yön yukarı, kapalı = kuzey yukarı
+  $('arrowtxt').textContent = live ? `${heading.toFixed(0)}° ${dirName(heading)}` :
+    tr({ off: 'aOff', asking: 'aAsking', waiting: 'aWaiting', nodata: 'aNodata', denied: 'aDenied', none: 'aNone' }[cmpState] ?? 'aOff');
   drawSky();
 }
 
@@ -423,7 +518,7 @@ async function refreshBuildings(force = false, attempt = 0) {
   if (!last.ground) fails.push(tr('gFail', { e: gr.reason.message }).trim());
   if (!last.hz) fails.push(tr('hFail', { e: hz.reason.message }).trim());
   if (fails.length) {
-    $('gstat').innerHTML = `${esc(fails.join(' '))} <button id="retry">${tr('retry')}</button>`;
+    $('gstat').innerHTML = `${esc(fails.join(' '))}<br><button id="retry" class="btn">${icon('rotate-ccw')}${tr('retry')}</button>`;
     $('retry').onclick = () => refreshBuildings(true, 1);
     if (attempt === 0) autoRetry = setTimeout(() => refreshBuildings(true, 1), 8000);
   } else if ($('retry')) $('gstat').textContent = '';
@@ -452,9 +547,8 @@ $('look').onclick = () => {
 function setPoint(lat, lng, pan = true) {
   pt = L.latLng(lat, lng);
   marker.setLatLng(pt);
-  $('coord').value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
   if (pan) map.setView(pt, Math.max(map.getZoom(), 17));
-  draw(); refreshBuildings(); fetchTZ(lat, lng);
+  draw(); refreshBuildings(); fetchTZ(lat, lng); updateBack();
 }
 // Konumun saat dilimi (Open-Meteo, ~10 km ızgarada önbellekli). Başarısızsa tarayıcının saat dilimi kalır.
 let timeTouched = false;
@@ -477,8 +571,16 @@ function gotPos(pos, pan) {
   if (acc) acc.remove();
   acc = L.circle([latitude, longitude], { radius: accuracy, color: '#4af', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(map);
   $('gstat').textContent = tr('gotPos', { a: Math.round(accuracy) });
+  gpsPt = L.latLng(latitude, longitude);
   setPoint(latitude, longitude, pan);
 }
+// GPS konumundan >30 m uzaklaşınca "Konumuma dön" görünür; konum düğmesi GPS'teyken mavi
+function updateBack() {
+  const away = !!(gpsPt && pt && pt.distanceTo(gpsPt) > 30);
+  $('backbtn').hidden = !away;
+  $('geo').classList.toggle('on', !!(gpsPt && pt && !away));
+}
+function backToMe() { if (!gpsPt) return locate(); setPoint(gpsPt.lat, gpsPt.lng, false); map.flyTo(gpsPt, Math.max(map.getZoom(), 17), { duration: .6 }); }
 function locate() {
   if (!navigator.geolocation) { $('gstat').textContent = tr('noGeo'); return; }
   $('gstat').textContent = tr('askingPos');
@@ -513,7 +615,7 @@ function requestCompass() {
   }).catch(e => { cmpState = 'off'; drawHeading(); $('gstat').textContent = tr('cmpErr', { e: e.message }); });
 }
 function compassStart() {
-  compassOn = true; cmpState = 'waiting'; $('cmp').classList.add('on'); $('look').disabled = false;
+  compassOn = true; cmpState = 'waiting'; $('arrow').classList.add('on'); $('look').hidden = false;
   navigator.wakeLock?.request('screen').then(w => wake = w).catch(() => {}); // sahada ekran kararmasın
   drawHouse(); // kalibrasyon düğmesi
   // İkisini de dinle: Android Chrome 'absolute' verir, iOS ve bazı Android'ler düz 'deviceorientation' (onOrient mutlak olmayanı eler)
@@ -524,14 +626,13 @@ function compassStart() {
   if (navigator.geolocation) watchId = navigator.geolocation.watchPosition(p => { gotPos(p, false); map.panTo(pt); }, () => {}, { enableHighAccuracy: true });
 }
 function compassStop() {
-  compassOn = false; cmpState = 'off'; heading = null; raw = null; wake?.release(); wake = null; $('cmp').classList.remove('on'); $('look').disabled = true;
+  compassOn = false; cmpState = 'off'; heading = null; raw = null; wake?.release(); wake = null; $('arrow').classList.remove('on'); $('look').hidden = true;
   window.removeEventListener('deviceorientationabsolute', onOrient); window.removeEventListener('deviceorientation', onOrient);
   if (watchId != null) navigator.geolocation.clearWatch(watchId); // pil: izlemeyi bırak
   watchId = null; drawHeading(); drawHouse();
 }
-$('cmp').onclick = () => compassOn ? compassStop() : requestCompass();
 // Üstteki ok: pusula kapalıysa açar; açıksa yön-yukarı ↔ kuzey-yukarı
-$('arrow').onclick = () => { if (!compassOn) return requestCompass(); rotateOn = !rotateOn; drawHeading(); };
+$('arrow').onclick = () => compassOn ? compassStop() : requestCompass();
 document.addEventListener('visibilitychange', () => { if (compassOn && document.visibilityState === 'visible') navigator.wakeLock?.request('screen').then(w => wake = w).catch(() => {}); });
 $('sheet').ontoggle = () => { document.body.classList.toggle('closed', !$('sheet').open); map.invalidateSize(); };
 $('gpskat').onclick = () => {
@@ -543,23 +644,42 @@ $('gpskat').onclick = () => {
 };
 
 // ---------- olaylar ----------
-$('geo').onclick = locate;
-$('go').onclick = () => {
-  const m = $('coord').value.match(/(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)/);
-  if (m && Math.abs(+m[1]) <= 90 && Math.abs(+m[2]) <= 180) setPoint(+m[1], +m[2]);
-  else alert(tr('badCoord'));
+$('geo').onclick = () => gpsPt && pt && pt.distanceTo(gpsPt) > 30 ? backToMe() : locate();
+$('backbtn').onclick = backToMe;
+// Arama: "lat, lon" doğrudan; değilse adres (Nominatim, yalnız gönderince — politikası tuş başına sorguya izin vermiyor)
+$('sform').onsubmit = async e => {
+  e.preventDefault();
+  const q = $('coord').value.trim(), box = $('sresults');
+  if (!q) return;
+  const m = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if (m && Math.abs(+m[1]) <= 90 && Math.abs(+m[2]) <= 180) { box.innerHTML = ''; $('coord').blur(); return setPoint(+m[1], +m[2]); }
+  box.innerHTML = `<span class="muted">${tr('loading')}</span>`;
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=${lang}&q=${encodeURIComponent(q)}`, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const res = await r.json();
+    box.innerHTML = res.length ? '' : `<span class="muted">${tr('noResults')}</span>`;
+    for (const x of res) {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = x.display_name;
+      b.onclick = () => { box.innerHTML = ''; $('coord').value = x.display_name; $('coord').blur(); setPoint(+x.lat, +x.lon); };
+      box.appendChild(b);
+    }
+  } catch (err) { box.innerHTML = `<span class="muted">${esc(tr('searchErr', { e: err.message }))}</span>`; }
 };
-$('coord').onkeydown = e => { if (e.key === 'Enter') $('go').click(); };
+$('coord').addEventListener('input', () => { if (!$('coord').value) $('sresults').innerHTML = ''; });
+// Kat: − / + düğmeleri
+for (const [id, d] of [['katminus', -1], ['katplus', 1]]) $(id).onclick = () => { $('kat').value = Math.max(0, kat() + d); katSrc = null; draw(); };
 // Binaya dokun = o binanın en yakın duvarı seçilir; açık alana dokun = kendi konumunu oraya taşı (iğne de sürüklenebilir)
 map.on('click', e => {
   if (pt && last) {
     const [x, y] = frame(pt.lat, pt.lng).to(e.latlng.lat, e.latlng.lng), all = B.buildings.concat(B.own), hit = all.filter(b => pip(x, y, b.ring));
-    if (hit.length) return setHouse(pickEdge(hit, x, y));
+    if (hit.length) { map.panTo(e.latlng); return setHouse(pickEdge(hit, x, y)); }
     // parmak duvarın biraz dışına düştüyse: ekranda ~14 px içindeki duvar da seçilir
     const snap = pickEdge(all, x, y, 14 * 40075016.686 * Math.cos(pt.lat * Math.PI / 180) / 2 ** (map.getZoom() + 8));
-    if (snap) return setHouse(snap);
+    if (snap) { map.panTo(e.latlng); return setHouse(snap); }
   }
   setPoint(e.latlng.lat, e.latlng.lng, false);
+  map.panTo(e.latlng); // uzak bir noktaya dokununca harita oraya gidip ortalansın
 });
 marker.on('dragend', () => { const p = marker.getLatLng(); setPoint(p.lat, p.lng, false); });
 map.on('zoomend', draw);
@@ -577,7 +697,7 @@ $('seasons').onclick = e => {
   seasonMark(); draw();
 };
 let playT = null;
-function stopPlay() { clearInterval(playT); playT = null; $('play').textContent = '▶'; $('play').classList.remove('on'); }
+function stopPlay() { clearInterval(playT); playT = null; $('play').innerHTML = icon('play'); $('play').classList.remove('on'); }
 $('play').onclick = () => {
   if (playT) return stopPlay();
   if (!pt) return;
@@ -585,7 +705,7 @@ $('play').onclick = () => {
   const mins = t => { const x = hmIn(t, TZ); return x.h * 60 + x.m; };
   const a = ev.sunrise ? mins(ev.sunrise) : 0, z = ev.sunset ? mins(ev.sunset) : ev.polar === 'night' ? 0 : 1439;
   if (z <= a) { $('gstat').textContent = tr('noSunrise'); return; }
-  let t = a; $('play').textContent = '⏸'; $('play').classList.add('on');
+  let t = a; $('play').innerHTML = icon('pause'); $('play').classList.add('on');
   playT = setInterval(() => { // ~6 sn'de doğumdan batıma, 5 dk adım
     $('time').value = t; draw(); t += 5;
     if (t > z) stopPlay();
@@ -607,9 +727,10 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal'
 function showIntro(help = false) {
   openCard(`<h2 id="cardtitle">${help ? tr('helpTitle') : tr('introTitle')}</h2><p>${tr('introLead')}</p>
     <p>${tr('step1')}<br>${tr('step2')}<br>${tr('step3')}</p>
-    <h3>${tr('permTitle')}</h3><p>${tr('permLoc')}</p><p>${tr('permMotion')}</p><p class="muted">${tr('permData')}</p><p class="muted">${tr('permDenied')}</p>
+    <h3>${tr('permTitle')}</h3><p class="perm">${icon('locate')}<span>${tr('permLoc')}</span></p><p class="perm">${icon('compass')}<span>${tr('permMotion')}</span></p>
+    <p class="muted">${tr('permData')}</p><p class="muted">${tr('permDenied')}</p>
     ${help ? `<h3>${tr('legendTitle')}</h3><p class="muted">${legend}</p><h3>${tr('aboutTitle')}</h3><p class="muted">${tr('note')}</p>` : ''}
-    <div class="actions">${compassOn && pt ? '' : `<button class="primary" id="introGo">${tr('allowStart')}</button>`}<button id="introSkip">${help ? tr('close') : tr('skip')}</button></div>`);
+    <div class="actions"><button class="btn" id="introSkip">${help ? tr('close') : tr('skip')}</button>${compassOn && pt ? '' : `<button class="btn primary" id="introGo">${tr('allowStart')}</button>`}</div>`);
   $('introGo')?.addEventListener('click', () => { localStorage.setItem('introSeen', 1); requestCompass(); locate(); closeCard(); });
   $('introSkip').onclick = () => { localStorage.setItem('introSeen', 1); closeCard(); if (!pt) setPoint(51.4779, -0.0015); };
 }
@@ -636,10 +757,10 @@ function drawConf() {
 $('conf').onclick = () => {
   if (!conf) return;
   const o = house ? { lat: house.lat, lng: house.lon } : pt;
-  openCard(`<h2 id="cardtitle">❗ ${tr('confTitle')}</h2><p>${tr('confBody', { g: conf.guessed, n: conf.n })}</p>
+  openCard(`<h2 id="cardtitle">${tr('confTitle')}</h2><p>${tr('confBody', { g: conf.guessed, n: conf.n })}</p>
     ${conf.targetGuessed ? `<p>${tr('confTarget')}</p>` : ''}<p>${tr('confFix')}</p>
     <p><a href="https://www.openstreetmap.org/edit#map=19/${o.lat.toFixed(5)}/${o.lng.toFixed(5)}" target="_blank" rel="noopener">${tr('confEdit')} ↗</a></p>
-    <div class="actions"><button id="confClose">${tr('close')}</button></div>`);
+    <div class="actions"><button class="btn" id="confClose">${tr('close')}</button></div>`);
   $('confClose').onclick = closeCard;
 };
 

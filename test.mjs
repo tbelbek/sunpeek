@@ -151,3 +151,11 @@ console.log('güven ok');
   for (const k of en) for (const l of Object.keys(blocks)) assert.equal(ph(blocks[l], k), ph(blocks.en, k), `${l}.${k} yer tutucuları farklı`);
 }
 console.log('çeviri ok');
+
+// Düz ikon seti: hiçbir çeviri emoji ile başlamaz ve emoji içermez (ikonlar arayüzde SVG)
+{
+  const src = (await import('node:fs')).readFileSync(new URL('./i18n.js', import.meta.url), 'utf8');
+  const emo = src.match(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
+  assert.equal(emo, null, `i18n.js'te emoji kaldı: ${emo?.[0]}`);
+}
+console.log('emoji yok ok');

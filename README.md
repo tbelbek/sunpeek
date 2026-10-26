@@ -8,6 +8,8 @@
 
 ## Features
 
+- **Search** an address (OpenStreetMap Nominatim) or paste `lat, lon`. Tapping anywhere else on the map moves your position there and centres the map; **Back to my location** appears once you're more than 30 m from your GPS fix.
+- **Light and dark mode** follow the system setting; flat icon set, 44 px touch targets.
 - **Tap a wall, get the answer:** today / summer / winter hours as big tiles, time windows below. Tapping open ground (or dragging the pin) moves your own position.
 - **Facade sun hours** for the selected day, summer solstice and winter solstice, with time windows (e.g. `13:40–18:10`).
 - **Shadows from surrounding buildings** (OpenStreetMap footprints and heights, multipolygons and building parts), using exact ray–polygon intersection up to 400 m.
@@ -36,6 +38,8 @@ Everything runs in the browser. There is no backend and no build step.
 | Addresses in history | Nominatim reverse geocoding (one request per saved facade) |
 | Imagery | Esri World Imagery |
 | Map | Leaflet + leaflet-rotate |
+| Address search | Nominatim (on submit only, per its usage policy) |
+| Icons | [Lucide](https://lucide.dev) (ISC License), inlined as an SVG sprite |
 
 A facade is blocked by a building when the sun ray enters that building's footprint below its top: `height + base elevation − window height > distance × tan(sun elevation)`. A facade is blocked by terrain when the sun is below the horizon profile in that direction. When the sun is more than 85° off the facade normal, it counts as "behind" the facade.
 
@@ -77,7 +81,7 @@ node test.mjs
 
 They check the sun position against an independent NOAA implementation and published sunrise/sunset times, the shadow and terrain logic, time zones, height confidence, and that every language has every key and placeholder.
 
-End-to-end tests (`e2e/run.js`) drive the real app in a phone-sized iframe: first-run card, all six languages, tapping walls, seasons and day animation (both hemispheres), polar night, compass and calibration, floor warning, the ❗ card, history, offline + retry, language switch and desktop layout. With the local server running, open any page on `http://localhost:8765`, evaluate `e2e/run.js` in the console, then `await E2E.run('tapping')` (names in `E2E.names`). They use live data services, so the first run is slow.
+End-to-end tests (`e2e/run.js`, 17 scenarios / ~120 checks) drive the real app in a phone-sized iframe: first-run card, all six languages, tapping walls and open ground (map recentres), address search, back to my location, seasons and day animation (both hemispheres), polar night, compass and calibration, floor stepper and warning, touch-target sizes and aria-labels, the ❗ card, history, offline + retry, language switch and desktop layout. With the local server running, open any page on `http://localhost:8765`, evaluate `e2e/run.js` in the console, then `await E2E.run('tapping')` (names in `E2E.names`). They use live data services, so the first run is slow.
 
 ## Permissions on phones
 
@@ -95,3 +99,5 @@ There is no account and no server-side storage. History and settings stay in you
 ## License
 
 All rights reserved. The source is published for reference. Contact the author for any other use.
+
+Third-party: icons from [Lucide](https://lucide.dev) — ISC License, Copyright (c) Lucide Icons and Contributors.

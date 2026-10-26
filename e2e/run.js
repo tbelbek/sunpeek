@@ -59,7 +59,7 @@ async () => {
       a.$('introSkip').click(); await sl(300);
       check('intro: Geç kartı kapatır', a.$('modal').hidden);
       check('intro: introSeen kaydedildi', a.win.localStorage.getItem('introSeen') === '1');
-      check('intro: ok durum yazıyor', /🧭/.test(a.$('arrowtxt').textContent), a.$('arrowtxt').textContent);
+      check('intro: pusula düğmesi etiketli', /Pusula/.test(a.$('arrow').getAttribute('aria-label') || ''), a.$('arrow').getAttribute('aria-label'));
       await a.loaded();
       check('intro: Geç sonrası varsayılan konum', a.sp.pt && Math.abs(a.sp.pt.lat - 51.4779) < 1e-3);
       a.$('helpbtn').click(); await sl(200);
@@ -141,10 +141,11 @@ async () => {
       const B = a.sp.B.buildings; let spot = null;
       for (let k = 0; k < 400 && !spot; k++) { const x = (Math.random() - 0.5) * 300, y = (Math.random() - 0.5) * 300; if (B.every(q => Math.hypot(q.cx - x, q.cy - y) > 40)) spot = [x, y]; }
       if (spot) {
-        const before = a.$('coord').value; a.sp.map.setZoom(17); await sl(500);
-        const ll = a.toLatLng(...spot); a.sp.map.panTo(ll); await sl(700);
-        await a.tapLatLng(...ll); await sl(400);
-        check('dokunma: açık alana dokununca konum taşındı', a.$('coord').value !== before, a.$('coord').value);
+        const before = a.sp.pt; a.sp.map.setZoom(17); await sl(500);
+        const ll = a.toLatLng(...spot);
+        await a.tapLatLng(...ll); await sl(900);
+        check('dokunma: açık alana dokununca konum taşındı', a.sp.pt.distanceTo(before) > 20, a.sp.pt.distanceTo(before));
+        check('dokunma: harita dokunulan yere ortalandı', a.sp.map.getCenter().distanceTo(ll) < 15, a.sp.map.getCenter().distanceTo(ll));
       } else check('dokunma: açık alan bulunamadı (atlandı)', true);
       noErr('dokunma', a); a.close();
     },
@@ -161,9 +162,9 @@ async () => {
       check('mevsim: Bugün geri döner', btn('today').classList.contains('on'));
       btn('summer').click(); const t0 = a.$('tval').textContent;
       a.$('play').click(); await sl(1500);
-      check('oynat: ▶ → ⏸ ve saat ilerliyor', a.$('play').textContent === '⏸' && a.$('tval').textContent !== t0, `${a.$('play').textContent} ${t0}→${a.$('tval').textContent}`);
+      check('oynat: başlar ve saat ilerler', a.$('play').classList.contains('on') && /#i-pause/.test(a.$('play').innerHTML) && a.$('tval').textContent !== t0, `${t0}→${a.$('tval').textContent}`);
       a.$('play').click(); await sl(200);
-      check('oynat: ⏸ → ▶ durur', a.$('play').textContent === '▶');
+      check('oynat: ikinci dokunuş durdurur', !a.$('play').classList.contains('on') && /#i-play/.test(a.$('play').innerHTML));
       await a.go(-33.8568, 151.2153);
       btn('summer').click(); await sl(200);
       check('mevsim: güney Yaz = 21 Aralık', a.$('date').value.endsWith('-12-21'), a.$('date').value);
@@ -176,21 +177,19 @@ async () => {
       await a.go(69.6496, 18.9560);
       check('kutup: "doğmuyor"', /doğmuyor/.test(a.$('riseset').textContent), a.$('riseset').textContent);
       a.$('play').click(); await sl(300);
-      check('kutup: oynatma uyarısı', /doğmuyor/.test(a.$('gstat').textContent) && a.$('play').textContent === '▶', a.$('gstat').textContent);
+      check('kutup: oynatma uyarısı', /doğmuyor/.test(a.$('gstat').textContent) && !a.$('play').classList.contains('on'), a.$('gstat').textContent);
       noErr('kutup', a); a.close();
     },
     // 8. Pusula: yön, harita dönmesi, kuzey-yukarı, kalibrasyon
     async compass() {
       const a = await open({ lang: 'en' });
       await a.go(51.4779, -0.0015);
-      a.$('cmp').click(); await sl(800);
+      a.$('arrow').click(); await sl(800);
       a.orient(270); await sl(700);
       check('pusula: yön 90° (alpha 270)', /^90° E/.test(a.$('arrowtxt').textContent), a.$('arrowtxt').textContent);
       const pane = a.d.querySelector('.leaflet-rotate-pane')?.style.transform || '';
       check('pusula: harita döndü', /rotate\((?!0rad)/.test(pane), pane);
-      a.$('arrow').click(); await sl(300);
-      check('pusula: oka dokun = kuzey yukarı', /N↑/.test(a.$('arrowtxt').textContent) && /rotate\(0rad\)|rotate\(0deg\)|^translate3d\([^)]*\)$/.test(a.d.querySelector('.leaflet-rotate-pane').style.transform), a.d.querySelector('.leaflet-rotate-pane').style.transform);
-      a.$('arrow').click();
+      check('pusula: düğme mavi (açık), "baktığım ev" görünür', a.$('arrow').classList.contains('on') && !a.$('look').hidden);
       const b = a.nearestBuilding(); await a.tapLatLng(...a.toLatLng(b.cx, b.cy)); await until(() => a.sp.house, 5000);
       check('pusula: cephe seçiliyken kalibrasyon düğmesi', a.$('calib'));
       if (a.$('calib')) {
@@ -199,8 +198,9 @@ async () => {
         a.$('calib').click(); await sl(300);
         check('kalibrasyon: düzeltme ≈ +7° kaydedildi', Math.abs(+a.win.localStorage.getItem('cmpOff') - 7) < 1.5, a.win.localStorage.getItem('cmpOff'));
       }
-      a.$('cmp').click(); await sl(300);
-      check('pusula: kapatınca ok K', /N/.test(a.$('arrowtxt').textContent) && !/°/.test(a.$('arrowtxt').textContent), a.$('arrowtxt').textContent);
+      a.$('arrow').click(); await sl(400);
+      const pane2 = a.d.querySelector('.leaflet-rotate-pane')?.style.transform || '';
+      check('pusula: kapatınca kuzey yukarı ve etiket boş', !a.$('arrow').classList.contains('on') && a.$('arrowtxt').textContent === '' && !/rotate\((?!0)/.test(pane2.replace(/rotate\(0(rad|deg)?\)/, '')), `${a.$('arrowtxt').textContent} ${pane2}`);
       noErr('pusula', a); a.close();
     },
     // 9. Kat: mantıksız kat uyarısı ve düzeltme; GPS rakımından kat
@@ -244,9 +244,9 @@ async () => {
       a.$('histbox').open = true; await sl(100);
       a.d.querySelector('[data-del="0"]').click(); await sl(200);
       check('geçmiş: sil', n() === 1 && a.$('hcount').textContent === '1', n());
-      a.$('coord').value = '0, 0';
-      a.d.querySelector('.hrow').click(); await sl(600);
-      check('geçmiş: dokun → konuma git', !/^0\.0+, 0\.0+$/.test(a.$('coord').value) && Math.abs(parseFloat(a.$('coord').value) - 51.478) < 0.01, a.$('coord').value);
+      await a.go(51.50, -0.12);
+      a.d.querySelector('.hrow').click(); await sl(800);
+      check('geçmiş: dokun → konuma git', Math.abs(a.sp.pt.lat - 51.478) < 0.01, a.sp.pt.lat);
       noErr('geçmiş', a); a.close();
     },
     // 12. Ağ hatası: Overpass ve yükseklik servisi erişilemezse anlaşılır mesaj, çökme yok
@@ -255,7 +255,7 @@ async () => {
       await a.go(51.4779, -0.0015);
       const realFetch = a.win.fetch;
       a.win.fetch = () => Promise.reject(new Error('offline'));
-      await a.go(51.4779, -0.0015 + 0.004); // önbellekte olmayan komşu ızgara
+      await a.go(+(51.40 + Math.random() * 0.1).toFixed(4), +(-0.20 + Math.random() * 0.1).toFixed(4)); // her koşuda önbellekte olmayan bir yer
       await until(() => a.$('retry'), 15000);
       const t = a.$('gstat').textContent;
       check('ağ hatası: görünür bina mesajı', /Couldn't load buildings/.test(t), t);
@@ -264,8 +264,9 @@ async () => {
       check('ağ hatası: gün doğumu yine hesaplandı', /\d/.test(a.$('riseset').textContent), a.$('riseset').textContent);
       a.win.fetch = realFetch;
       a.$('retry').click();
-      await until(() => !a.$('retry') && a.sp.B.buildings.length > 0, 90000);
-      check('yeniden dene: bağlantı gelince binalar yüklendi', a.sp.B.buildings.length > 0 && !a.$('retry'), a.$('gstat').textContent);
+      await until(() => a.sp.B.buildings.length > 0, 90000);
+      // binalar gelmeli; arazi servisi o an hız sınırındaysa (429) onun uyarısı ve ↻ kalabilir — bu doğru davranış
+      check('yeniden dene: bağlantı gelince binalar yüklendi', a.sp.B.buildings.length > 0 && !/Couldn't load buildings/.test(a.$('gstat').textContent), a.$('gstat').textContent);
       noErr('ağ hatası', a); a.close();
     },
     // 13. Dil değiştir: seçim kaydedilir, sayfa yeni dilde açılır
@@ -276,12 +277,57 @@ async () => {
       check('dil seçici: Almancaya geçti', a.f.contentDocument.documentElement.lang === 'de' && localStorage.getItem('lang') === 'de');
       a.close();
     },
+    // 15. Adres arama (Nominatim) ve koordinatla arama
+    async search() {
+      const a = await open({ lang: 'en' });
+      await a.go(51.4779, -0.0015);
+      a.$('coord').value = 'Trafalgar Square, London'; a.$('go').click();
+      await until(() => a.$('sresults').querySelector('button'), 15000);
+      const n = a.$('sresults').querySelectorAll('button').length;
+      check('arama: adres sonuçları listelendi', n > 0, a.$('sresults').innerText);
+      a.$('sresults').querySelector('button').click(); await sl(800);
+      check('arama: sonuca dokununca oraya gitti', a.sp.pt && a.sp.pt.distanceTo([51.508, -0.128]) < 300, a.sp.pt && a.sp.pt.distanceTo([51.508, -0.128]));
+      check('arama: liste kapandı', !a.$('sresults').innerHTML);
+      a.$('coord').value = 'qqqzzxxyy nowhere 12345'; a.$('go').click();
+      await until(() => /No results/.test(a.$('sresults').innerText), 15000);
+      check('arama: sonuç yoksa söyler', /No results/.test(a.$('sresults').innerText), a.$('sresults').innerText);
+      a.$('coord').value = '59.315, 18.07'; a.$('go').click(); await sl(400);
+      check('arama: "lat, lon" doğrudan gider', Math.abs(a.sp.pt.lat - 59.315) < 1e-6, a.sp.pt.lat);
+      noErr('arama', a); a.close();
+    },
+    // 16. Konumuma dön: GPS konumundan uzaklaşınca düğme çıkar, dokununca geri döner
+    async backToMe() {
+      const a = await open({ lang: 'en' });
+      a.win.navigator.geolocation.getCurrentPosition = ok => ok({ coords: { latitude: 51.4779, longitude: -0.0015, accuracy: 10, altitude: null, altitudeAccuracy: null } });
+      a.$('geo').click(); await a.loaded(); await sl(500);
+      check('geri dön: GPS\'teyken konum düğmesi mavi, geri düğmesi yok', a.$('geo').classList.contains('on') && a.$('backbtn').hidden);
+      await a.go(51.4900, -0.0015); // ~1,3 km kuzeye
+      check('geri dön: uzaklaşınca "Back to my location" görünür', !a.$('backbtn').hidden && !a.$('geo').classList.contains('on'));
+      a.$('backbtn').click(); await sl(1200);
+      check('geri dön: dokununca GPS konumuna döndü', a.sp.pt.distanceTo([51.4779, -0.0015]) < 1 && a.$('backbtn').hidden, a.sp.pt.distanceTo([51.4779, -0.0015]));
+      noErr('geri dön', a); a.close();
+    },
+    // 17. Kat düğmeleri ve dokunma alanları
+    async controls() {
+      const a = await open({ lang: 'de' });
+      await a.go(51.4779, -0.0015);
+      a.$('katplus').click(); a.$('katplus').click(); a.$('katminus').click(); await sl(200);
+      check('kat: + + − = 1', a.$('kat').value === '1', a.$('kat').value);
+      a.$('kat').value = 0; a.$('katminus').click(); await sl(100);
+      check('kat: 0\'ın altına inmez', a.$('kat').value === '0', a.$('kat').value);
+      const small = [...a.d.querySelectorAll('#panel button, #fabs button, #sform button, #seasons button')].filter(b => b.offsetParent && (b.offsetHeight < 34 || b.offsetWidth < 34)).map(b => (b.id || b.className) + ':' + b.offsetWidth + 'x' + b.offsetHeight);
+      check('dokunma alanları ≥ 34 px', !small.length, small.join(', '));
+      const unl = [...a.d.querySelectorAll('button')].filter(b => b.offsetParent && !b.textContent.trim() && !b.getAttribute('aria-label')).map(b => b.id || b.className);
+      check('ikon düğmelerinin hepsinde aria-label', !unl.length, unl.join(', '));
+      noErr('kontroller', a); a.close();
+    },
     // 14. Masaüstü düzeni
     async desktop() {
       const a = await open({ lang: 'en', w: 1280, h: 800 });
       await a.go(51.4779, -0.0015);
       const p = a.$('panel').getBoundingClientRect();
-      check('masaüstü: panel sağda 300 px', Math.round(p.width) === 300 && p.right > 1200, `${p.width} ${p.right}`);
+      const sea = a.$('seasons').getBoundingClientRect();
+      check('masaüstü: panel solda 360 px, mevsimlerin altında', Math.round(p.width) === 360 && p.left < 20 && p.top > sea.bottom, `${p.width} ${p.left} ${p.top} vs ${sea.bottom}`);
       check('masaüstü: harita tam ekran', a.$('map').getBoundingClientRect().height === 800);
       noErr('masaüstü', a); a.close();
     },
