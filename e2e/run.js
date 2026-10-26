@@ -4,6 +4,7 @@
 // Ağ gerektirir (Overpass, Open-Meteo, Nominatim); ilk yükleme yavaş olabilir, sonrası localStorage önbelleğinden gelir.
 async () => {
   const sl = ms => new Promise(r => setTimeout(r, ms));
+  const gtxt = a => { const g = a.$('gstat'); return g.textContent + ' ' + (g.querySelector('.tipbtn')?.dataset.tip || ''); }; // kısa durum + (i) içindeki tam metin
   const results = [];
   const check = (name, ok, detail = '') => { results.push({ name, ok: !!ok, detail: ok ? '' : String(detail).slice(0, 300) }); };
   const until = async (fn, ms = 90000, step = 300) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = fn(); if (v) return v; } catch {} await sl(step); } return null; };
@@ -79,6 +80,7 @@ async () => {
         check(`dil ${l}: ham anahtar görünmüyor`, !/\b(riseSet|emptyHint|floorLabel|lgVis|confBody|aOff)\b/.test(txt), txt.match(/\b(riseSet|emptyHint|floorLabel|lgVis|confBody|aOff)\b/)?.[0]);
         const s = a.$('seasons');
         check(`dil ${l}: mevsim düğmeleri sığıyor`, s.scrollWidth <= s.clientWidth + 1, `${s.scrollWidth}>${s.clientWidth}`);
+        a.$('unpick')?.click(); await sl(100);
         check(`dil ${l}: boş durum ipucu görünür`, a.$('empty').style.display !== 'none' && a.$('empty').textContent.length > 20);
         noErr(`dil ${l}`, a); a.close();
       }
@@ -106,6 +108,7 @@ async () => {
     async tapping() {
       const a = await open({ lang: 'en' });
       await a.go(51.4779, -0.0015);
+      a.$('unpick')?.click(); a.win.localStorage.removeItem('gecmis'); await sl(100); // koordinat araması duvarı kendisi seçer; dokunmayı sıfırdan test et
       const b = a.nearestBuilding();
       check('dokunma: yakında bina var', b, 'bina yok');
       if (!b) return a.close();
@@ -178,7 +181,7 @@ async () => {
       await a.go(69.6496, 18.9560);
       check('kutup: "doğmuyor"', /doğmuyor/.test(a.$('riseset').textContent), a.$('riseset').textContent);
       a.$('play').click(); await sl(300);
-      check('kutup: oynatma uyarısı', /doğmuyor/.test(a.$('gstat').textContent) && !a.$('play').classList.contains('on'), a.$('gstat').textContent);
+      check('kutup: oynatma uyarısı', /doğmuyor/.test(gtxt(a)) && !a.$('play').classList.contains('on'), gtxt(a));
       noErr('kutup', a); a.close();
     },
     // 8. Pusula: yön, harita dönmesi, kuzey-yukarı, kalibrasyon
@@ -209,13 +212,14 @@ async () => {
       const a = await open({ lang: 'en' });
       a.win.navigator.geolocation.getCurrentPosition = ok => ok({ coords: { latitude: 51.4779, longitude: -0.0015, accuracy: 8, altitude: null, altitudeAccuracy: null } });
       await a.go(51.4779, -0.0015);
+      a.$('unpick')?.click(); a.win.localStorage.removeItem('gecmis'); await sl(100); // koordinat araması duvarı kendisi seçer; dokunmayı sıfırdan test et
       const b = a.nearestBuilding(); await a.tapLatLng(...a.toLatLng(b.cx, b.cy)); await until(() => a.sp.house, 5000);
       a.$('kat').value = 30; a.$('kat').dispatchEvent(new a.win.Event('input')); await sl(300);
       check('kat: 30. kat için ❗', a.$('katwarn').style.display !== 'none' && /implausible/.test(a.$('katmsg').textContent), a.$('katmsg').textContent);
       a.$('katmsg').click(); await sl(300);
       check('kat: dokununca en üst kata düzeldi', +a.$('kat').value < 30 && a.$('katwarn').style.display === 'none', a.$('kat').value);
       a.$('gpskat').click(); await sl(200);
-      check('kat: GPS rakımı yoksa açıklama', /no altitude/.test(a.$('gstat').textContent), a.$('gstat').textContent);
+      check('kat: GPS rakımı yoksa açıklama', /no altitude/.test(gtxt(a)), gtxt(a));
       noErr('kat', a); a.close();
     },
     // 10. ❗ Yükseklik güveni: İstanbul Kadıköy'de uyarı ve açıklama kartı
@@ -223,6 +227,9 @@ async () => {
       const a = await open({ lang: 'tr' });
       await a.go(40.9892, 29.0272);
       check('güven: ❗ çıktı', a.$('conf').style.display !== 'none', a.$('conf').style.display);
+      check('güven: önce metinle açık', !a.$('conf').classList.contains('mini'));
+      await sl(5300); const cr = a.$('conf').getBoundingClientRect();
+      check('güven: 5 sn sonra ünleme katlandı, ekran içinde', a.$('conf').classList.contains('mini') && cr.width <= 44 && cr.left >= 0 && cr.right <= a.win.innerWidth, JSON.stringify(cr));
       a.$('conf').click(); await sl(200);
       const c = a.$('card').innerText, link = a.$('card').querySelector('a')?.href || '';
       check('güven: açıklama ve OSM linki', /OpenStreetMap/.test(c) && /openstreetmap\.org\/edit#map=19\//.test(link) && /\d+ binadan \d+/.test(c), c.slice(0, 120) + ' ' + link);
@@ -238,6 +245,7 @@ async () => {
     async history() {
       const a = await open({ lang: 'en' });
       await a.go(51.4779, -0.0015);
+      a.$('unpick')?.click(); a.win.localStorage.removeItem('gecmis'); await sl(100); // otomatik seçilen duvarı sayma
       const bs = a.sp.B.buildings.filter(b => (b.x1 - b.x0) * (b.y1 - b.y0) > 60).sort((p, q) => Math.hypot(p.cx, p.cy) - Math.hypot(q.cx, q.cy)).slice(0, 2);
       for (const b of bs) { await a.tapLatLng(...a.toLatLng(b.cx, b.cy)); await until(() => a.sp.house?.id === b.id, 5000); }
       const n = () => JSON.parse(a.win.localStorage.getItem('gecmis') || '[]').length;
@@ -246,7 +254,7 @@ async () => {
       a.d.querySelector('[data-del="0"]').click(); await sl(200);
       check('geçmiş: sil', n() === 1 && a.$('hcount').textContent === '1', n());
       await a.go(51.50, -0.12);
-      a.d.querySelector('.hgo').click(); await sl(800);
+      [...a.d.querySelectorAll('.hgo')].pop().click(); await sl(800); // en eski = Greenwich (yeni arama da kayıt ekler)
       check('geçmiş: dokun → konuma git', Math.abs(a.sp.pt.lat - 51.478) < 0.01, a.sp.pt.lat);
       noErr('geçmiş', a); a.close();
     },
@@ -258,7 +266,7 @@ async () => {
       a.win.fetch = () => Promise.reject(new Error('offline'));
       await a.go(+(51.40 + Math.random() * 0.1).toFixed(4), +(-0.20 + Math.random() * 0.1).toFixed(4)); // her koşuda önbellekte olmayan bir yer
       await until(() => a.$('retry'), 15000);
-      const t = a.$('gstat').textContent;
+      const t = gtxt(a);
       check('ağ hatası: görünür bina mesajı', /Couldn't load buildings/.test(t), t);
       check('ağ hatası: arazi mesajı', /ground elevation|horizon/.test(t), t);
       check('ağ hatası: ↻ Tekrar dene düğmesi', a.$('retry'));
@@ -267,7 +275,7 @@ async () => {
       a.$('retry').click();
       await until(() => a.sp.B.buildings.length > 0, 90000);
       // binalar gelmeli; arazi servisi o an hız sınırındaysa (429) onun uyarısı ve ↻ kalabilir — bu doğru davranış
-      check('yeniden dene: bağlantı gelince binalar yüklendi', a.sp.B.buildings.length > 0 && !/Couldn't load buildings/.test(a.$('gstat').textContent), a.$('gstat').textContent);
+      check('yeniden dene: bağlantı gelince binalar yüklendi', a.sp.B.buildings.length > 0 && !/Couldn't load buildings/.test(gtxt(a)), gtxt(a));
       noErr('ağ hatası', a); a.close();
     },
     // 13. Dil değiştir: seçim kaydedilir, sayfa yeni dilde açılır
@@ -337,7 +345,7 @@ async () => {
       a.$('sresults').querySelector('button').click(); await sl(4000); await a.loaded(); await sl(600);
       const rays = Object.values(a.sp.map._layers).filter(l => l instanceof a.win.L.Polyline && !(l instanceof a.win.L.Polygon)).length;
       check('regresyon: GPS izlenirken arama sonucu ezilmiyor', a.sp.pt.distanceTo([51.508, -0.128]) < 300, a.sp.pt.distanceTo([51.508, -0.128]));
-      check('regresyon: eski cephe bırakıldı', !a.sp.house);
+      check('regresyon: eski cephe bırakıldı', !a.sp.house || a.sp.house.id !== b.id); // yeni adreste kendi duvarı seçilebilir
       check('regresyon: yeni yerde güneş ışınları çizildi', rays > 10, rays);
       check('regresyon: "Konumuma dön" görünür', !a.$('backbtn').hidden);
       a.$('backbtn').click(); await sl(1200);
@@ -355,7 +363,7 @@ async () => {
       const tiles = [...a.d.querySelectorAll('.tile')].map(t => t.innerText);
       check('adres: bina bulundu ve cephe otomatik seçildi', a.sp.house && a.sp.pt.distanceTo([51.5034, -0.1276]) < 150, a.sp.house && a.sp.pt.distanceTo([51.5034, -0.1276]));
       check('adres: sonuçlar hesaplandı (3 kutucuk)', tiles.length === 3, tiles.join(' | '));
-      check('adres: kullanıcıya bilgi verildi', /picked automatically/.test(a.$('gstat').textContent), a.$('gstat').textContent);
+      check('adres: kullanıcıya bilgi verildi', /picked automatically/.test(gtxt(a)), gtxt(a));
       check('adres: seçilen duvar güneye yakın bakıyor', Math.abs(((a.sp.house.az - 180 + 540) % 360) - 180) <= 90, a.sp.house.az);
       noErr('adres', a); a.close();
     },
@@ -398,8 +406,12 @@ async () => {
       check('enerji: açılınca açı ve kWh/m² görünür, 35° panel > duvar (yaz)', /Sun angle on the surface|isn't on this surface/.test(a.d.querySelector('.energy').innerText) && roof > wall && wall > 0, `${wall} → ${roof}`);
       check('enerji: tercih saklandı', a.win.localStorage.getItem('solar') === '1');
       await until(() => /EU household/.test(a.$('annual')?.innerText || ''), 30000);
-      const pct = +((a.$('annual')?.innerText || '').match(/≈ (\d+)% of an average EU household/) || [])[1];
-      check('yıllık: 5 kWp ortalama AB hanesinin %10–%200 arasını karşılar', pct > 10 && pct < 200, a.$('annual')?.innerText);
+      const [, lo, hi] = ((a.$('annual')?.innerText || '').match(/Covers ≈ (\d+)–(\d+)% of an average EU household/) || []).map(Number);
+      check('yıllık: ihtiyatlı aralık (alt = üst × 0.8), %10–%200', lo > 10 && hi < 200 && Math.abs(lo / hi - 0.8) < 0.03, a.$('annual')?.innerText);
+      const tb = a.$('annual').querySelector('.tipbtn'); tb.click(); await sl(100);
+      const tr_ = a.$('tip')?.getBoundingClientRect(), vw = a.d.documentElement.clientWidth;
+      check('ipucu: dokununca açılır, ekran içinde kalır, metin görünmez değil', !a.$('tip').hidden && tr_.left >= 8 && tr_.right <= vw - 8 && tr_.top >= 8 && tr_.bottom <= a.win.innerHeight - 8 && /averages/.test(a.$('tip').textContent), JSON.stringify(tr_));
+      tb.click(); await sl(50); check('ipucu: ikinci dokunuş kapatır', a.$('tip').hidden);
       a.$('solarchk').click(); await sl(200);
       check('enerji: kapatınca gizlenir', !a.d.querySelector('.energy'));
       check('veri: "SunPeek\'e giden: hiçbir şey" ve istek sayısı', /Sent to SunPeek: nothing · map data services: \d+ requests/.test(a.$('nettxt').textContent), a.$('nettxt').textContent);
@@ -415,6 +427,10 @@ async () => {
       const p = a.$('panel').getBoundingClientRect();
       const sea = a.$('seasons').getBoundingClientRect();
       check('masaüstü: panel solda 360 px, mevsimlerin altında', Math.round(p.width) === 360 && p.left < 20 && p.top > sea.bottom, `${p.width} ${p.left} ${p.top} vs ${sea.bottom}`);
+      await until(() => a.d.querySelector('.tile b'), 8000);
+      check('masaüstü: saat kutucukları taşmıyor', [...a.d.querySelectorAll('.tile b')].every(b => b.scrollWidth <= b.parentElement.clientWidth), [...a.d.querySelectorAll('.tile b')].map(b => b.scrollWidth + '/' + b.parentElement.clientWidth).join(' '));
+      const cf = a.$('conf').getBoundingClientRect(), zm = a.d.querySelector('.leaflet-control-zoom').getBoundingClientRect();
+      check('masaüstü: yükseklik uyarısı zoomun solunda', a.$('conf').style.display === 'none' || (cf.right <= zm.left && Math.abs(cf.top - zm.top) < 20), JSON.stringify([cf.right, zm.left, cf.top, zm.top]));
       check('masaüstü: harita tam ekran', a.$('map').getBoundingClientRect().height === 800);
       noErr('masaüstü', a); a.close();
     },

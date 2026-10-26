@@ -46,7 +46,7 @@
   #seasons .tog { width: 36px; padding: 0; justify-content: center; color: var(--muted); }
   #seasons.min button[data-s]:not(.on) { display: none; } #seasons.min button[data-s].on span { display: inline; } #seasons.min button[data-s].on { width: auto; padding: 0 10px; }
   #conf { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; border: 0; border-radius: 20px; background: var(--warn-bg); color: var(--warn-fg); font-size: 13px; font-weight: 600; box-shadow: var(--shadow); }
-  #conf .ic { width: 16px; height: 16px; } #conf.low { background: var(--bad); color: #fff; }
+  #conf .ic { width: 16px; height: 16px; } #conf { transition: padding .2s; } #conf.mini { width: 40px; padding: 0; justify-content: center; } #conf.mini span { display: none; } #conf.mini .ic { width: 20px; height: 20px; } #conf.low { background: var(--bad); color: #fff; }
   /* Sağ alt: konum ve pusula düğmeleri */
   #fabs { position: absolute; z-index: 1000; right: 12px; bottom: 24px; display: flex; flex-direction: column; gap: 10px; }
   .fab { position: relative; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; border: 0; border-radius: 24px; background: var(--card); color: var(--fg); box-shadow: var(--shadow); }
@@ -69,9 +69,9 @@
   #sum { flex: 1; min-width: 0; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hint { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border-radius: 12px; background: var(--soft); color: var(--fg); }
   .hint .ic { color: var(--blue); margin-top: 1px; }
-  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); border-radius: 12px; background: var(--soft); }
+  .tiles { container-type: inline-size; display: grid; grid-template-columns: repeat(3, 1fr); border-radius: 12px; background: var(--soft); }
   .tile { padding: 12px 6px; text-align: center; border-left: 1px solid var(--line); } .tile:first-child { border-left: 0; }
-  .tile b { display: block; font-size: clamp(14px, 4.4vw, 18px); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; } .tile:first-child b { color: #b45309; }
+  .tile b { display: block; font-size: clamp(13px, 4.6cqi, 18px); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; } .tile:first-child b { color: #b45309; }
   .tile span { font-size: 13px; color: var(--muted); }
   @media (prefers-color-scheme: dark) { .tile:first-child b { color: var(--accent); } }
   .estrow { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin-bottom: 8px; padding: 8px 12px; border: 0; border-radius: 12px; background: var(--warn-bg); color: var(--warn-fg); font-size: 14px; font-weight: 600; text-align: left; }
@@ -79,8 +79,14 @@
   .netrow { margin: 12px 0 0; background: var(--soft); color: var(--fg); font-weight: 500; } .netrow .ic { color: var(--ok); }
   #surf { height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); max-width: 60%; }
   .energy { margin-top: 8px; }
+  .tipbtn { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: -12px -8px -12px -4px; padding: 0; border: 0; background: none; color: var(--muted); vertical-align: middle; } .tipbtn .ic { width: 18px; height: 18px; } .tipbtn[aria-expanded=true] { color: var(--link); }
+  .say { display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 10px; border-left: 4px solid var(--muted); background: var(--soft); color: var(--fg); } .say:empty { display: none; }
+  .say.ok { border-left-color: var(--ok); } .say.info { border-left-color: var(--link); } .say.warn { border-left-color: #f59e0b; } .say.bad { border-left-color: var(--bad); }
+  .say .tipbtn { margin: -10px -8px -10px auto; }
+  .calrow { display: flex; align-items: center; gap: 8px; margin-top: 8px; } .calrow .btn { flex: 1; } .calrow .tipbtn { margin: 0; }
+  #tip { position: fixed; z-index: 4000; max-width: min(320px, calc(100vw - 16px)); padding: 10px 12px; border-radius: 10px; background: var(--fg); color: var(--bg); font-size: 14px; line-height: 1.45; box-shadow: var(--shadow); }
+  .energy .tipbtn { float: right; margin: -10px -10px 0 0; }
   .annual .big { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  details.fine { margin-top: 6px; color: var(--muted); font-size: 13px; } details.fine > summary { min-height: 32px; display: flex; align-items: center; cursor: pointer; color: var(--link); } details.fine p { margin: 4px 0; }
   .solarcard { margin-top: 8px; padding: 4px 12px 12px; border-radius: 12px; background: var(--soft); } .solarcard h3 { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; font-size: 15px; } .solarcard h3 .ic { color: var(--accent); } .solarcard .field { border-bottom-color: var(--line); }
   .annual { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
   .chk { display: flex; align-items: center; gap: 10px; min-height: 44px; margin-top: 8px; cursor: pointer; } .chk input { width: 20px; height: 20px; accent-color: var(--blue); }
@@ -100,7 +106,7 @@
   .fix { display: flex; gap: 8px; align-items: flex-start; width: 100%; margin-top: 8px; padding: 10px 12px; border: 0; border-radius: 12px; background: var(--warn-bg); color: var(--warn-fg); font-weight: 600; text-align: left; cursor: pointer; }
   #katwarn { color: var(--bad); }
   #gstat:empty, #pos:empty, #rel:empty { display: none; }
-  #gstat { margin-top: 8px; font-size: 14px; color: var(--muted); } #gstat .btn { height: 36px; margin-top: 6px; }
+  #gstat { margin-top: 8px; font-size: 14px; } #gstat.say { flex-wrap: wrap; } #gstat .btn { height: 36px; margin-top: 6px; }
   #look { width: 100%; margin-top: 8px; } #look[hidden] { display: none; }
   #sky { display: block; width: 180px; height: 180px; margin: 12px auto 0; }
   #rel { text-align: center; font-weight: 600; margin-top: 4px; }
@@ -134,13 +140,13 @@
     .leaflet-control-zoom { display: none; }
     #sky { width: 160px; height: 160px; }
     /* telefonda yalnız seçili mevsim yazıyla, diğerleri simge (etiket aria-label'da) */
-    #seasons button.ico:not(.on) span { display: none; } #seasons button.ico:not(.on) { width: 44px; padding: 0; justify-content: center; } #seasons button { padding: 0 8px; font-size: 13px; } #seasons { gap: 0; }
+    #seasons button[data-s]:not(.on) span { display: none; } #seasons button[data-s]:not(.on) { width: 44px; padding: 0; justify-content: center; } #seasons button { padding: 0 8px; font-size: 13px; } #seasons { gap: 0; }
   }
   @media (min-width: 701px) { body.closed #panel { top: auto; bottom: 24px; } /* kapalı panel masaüstünde sol alta yaslanır */
     /* masaüstü: arama solda, mevsimler hemen yanında (tam genişlik, tüm etiketler); sonuçlar ve uyarı aramanın altında */
     #top { right: 8px; display: grid; grid-template-columns: 360px auto; justify-content: start; align-items: start; }
     #sform { grid-column: 1; grid-row: 1; } #seasons { grid-column: 2; grid-row: 1; max-width: calc(100vw - 392px); width: max-content; }
-    #sresults { grid-column: 1; grid-row: 2; } #conf { grid-column: 1; grid-row: 3; justify-self: start; }
+    #sresults { grid-column: 1; grid-row: 2; } #conf { position: absolute; top: 2px; right: 52px; } /* masaüstü: sağ üstte, zoom düğmelerinin solunda */
     #panel { top: 120px; max-height: calc(100% - 132px); } }
 </style>
 </head>
