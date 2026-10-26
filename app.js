@@ -31,16 +31,17 @@ async function sfetch(k, url, opt) {
 async function backup(k, fn) { net(k); try { return await fn(); } catch (e) { svcFail(k, e.name === 'TimeoutError' ? 'timeout' : e.message); throw e; } }
 function net(k) { NET[k]++; const el = document.getElementById('nettxt'); if (el) el.textContent = tr('netLine', { s: tr('reqs', { n: NET.sunpeek }), n: Object.values(NET).reduce((a, b) => a + b, 0) - NET.sunpeek }); }
 // Esri World Imagery. Esri'nin koşulları herkese açık uygulamada ArcGIS Location Platform hesabı ve API anahtarı istiyor
-// (ayda 2 milyon temel harita karosu ücretsiz). Anahtar sunpeek.uk referrer'ına kısıtlı olmalı; istemcide görünmesi normaldir.
-// Boşsa eski anahtarsız uç nokta kullanılır (koşullara uymaz, yalnız geçiş için).
-const ESRI_KEY = '';
+// (ayda 2 milyon temel harita karosu ücretsiz). ibasemaps-api ölçülen uç nokta (statik karo serviste uydu görüntüsü yok).
+// Anahtar yalnız Basemaps yetkili ve sunpeek.uk referrer'ına kısıtlı olmalı; istemcide görünmesi bu yüzden sorun değildir.
+// Boşsa (yerel geliştirme, anahtarsız derleme) eski anahtarsız uç nokta kullanılır: koşullara uymaz, üretimde kullanılmamalı.
+const ESRI_KEY = /^__/.test('__ESRI_KEY__') ? '' : '__ESRI_KEY__'; // Docker derlemesinde sunucunun .env'indeki ESRI_KEY yazılır; repoda anahtar yok
 const TILE_URL = ESRI_KEY
-  ? `https://static-map-tiles-api.arcgis.com/arcgis/rest/services/static-basemap-tiles-service/v1/arcgis/imagery/static/tile/{z}/{y}/{x}?token=${ESRI_KEY}`
+  ? `https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?token=${ESRI_KEY}`
   : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 const tiles = L.tileLayer(TILE_URL, {
   // Atıflar: Esri temel harita koşulu ("Powered by Esri" + görüntü kaynakları), OSM ODbL (katkıcılar + lisans bağlantısı),
   // AWS Terrain Tiles kaynak listesi, Open-Meteo CC BY 4.0. Overture yalnız kullanıldığında eklenir (useOverture).
-  maxZoom: 20, maxNativeZoom: 19, attribution: '<a href="https://www.esri.com" target="_blank" rel="noopener">Powered by Esri</a> · imagery: Esri, Vantor, Earthstar Geographics, and the GIS User Community · buildings © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL) · terrain: <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">AWS Terrain Tiles</a> · sunshine: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0)'
+  maxZoom: 20, maxNativeZoom: 19, attribution: '<a href="https://www.esri.com" target="_blank" rel="noopener">Powered by Esri</a> · imagery: Esri, Vantor, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community · buildings © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL) · terrain: <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">AWS Terrain Tiles</a> · sunshine: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0)'
 });
 tiles.on('tileloadstart', () => net('tiles')).on('tileerror', () => svcFail('tiles', 'tile error')).addTo(map); // dinleyici önce: ilk karolar da sayılır
 const sLayer = L.layerGroup().addTo(map), bLayer = L.layerGroup().addTo(map), rLayer = L.layerGroup().addTo(map);

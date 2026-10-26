@@ -2,7 +2,7 @@
 # Port yayınlanmaz; Cloudflare tüneli aynı Docker ağı üzerinden http://sunpeek:8080'e gelir.
 services:
   sunpeek:
-    build: .
+    build: { context: ., args: { ESRI_KEY: "${ESRI_KEY:-}" } }
     image: sunpeek:local
     container_name: sunpeek
     restart: unless-stopped
