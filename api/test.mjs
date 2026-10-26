@@ -41,14 +41,35 @@ process.env.MISS_WAIT_MS = '800';
 const { createServer } = await import('./server.js');
 
 const sql = postgres(process.env.DATABASE_URL ?? 'postgres://postgres:t@127.0.0.1:55432/postgres', { onnotice: () => {} });
-await sql`drop table if exists cells, kv, blobs, feedback, schema_migrations`;
+await sql`drop table if exists cells, kv, blobs, feedback, osm_cells, osm_cells_new, osm_stage, osm_cover, schema_migrations`;
 const quiet = { info() {}, warn() {}, error: console.error };
 const { server, migrate, purge } = createServer(sql, { log: quiet });
 await migrate(); await migrate(); // göç iki kez: ikincisi bir şey yapmamalı
-assert.deepEqual((await sql`select version from schema_migrations`).map(r => r.version), ['001_cells.sql', '002_kv_blobs.sql', '003_feedback.sql']);
+assert.deepEqual((await sql`select version from schema_migrations`).map(r => r.version), ['001_cells.sql', '002_kv_blobs.sql', '003_feedback.sql', '004_osm_import.sql']);
+
+// 0. şehir içe aktarma (import.mjs): OPL → Overpass biçimi, ilk noktanın hücresi; alan içindeki boş hücre = [] (Overpass'a gidilmez)
+const { importDir, polys } = await import('./import.mjs');
+const fs = await import('node:fs'), os = await import('node:os'), dir = fs.mkdtempSync(os.tmpdir() + '/osm-');
+fs.writeFileSync(dir + '/T.opl', [
+  'w10 Tbuilding=yes,name=A%20%B%2c%C Nn1x11.0011y61.0011,n2x11.0012y61.0011,n3x11.0012y61.0012,n1x11.0011y61.0011',
+  'w11 T Nn4x11.0061y61.0061,n5x11.0062y61.0061,n6x11.0062y61.0062,n4x11.0061y61.0061', // yalnız ilişki üyesi: tek başına yazılmaz
+  'w12 Tbuilding:part=yes,height=12 Nn1x11.0011y61.0011,n2x11.0012y61.0011,n3x11.0012y61.0012,n1x11.0011y61.0011',
+  'w13 Tbuilding=yes Nn7x y', // konumsuz düğüm: atlanır
+  'r20 Tbuilding=yes,type=multipolygon Mw11@outer,w99@inner'].join('\n') + '\n');
+fs.writeFileSync(dir + '/T.poly', 'T\n1\n 11.0 61.0\n 11.02 61.0\n 11.02 61.02\n 11.0 61.02\n 11.0 61.0\nEND\n!2\n 11.01 61.01\n 11.011 61.01\n 11.011 61.011\nEND\nEND\n');
+assert.equal(polys(fs.readFileSync(dir + '/T.poly', 'utf8')).length, 1, 'delik bölümü alan sayılmaz');
+await importDir(sql, dir, () => {}); const imp = await importDir(sql, dir, () => {}); // ikinci kez: tablo değişimi tekrarlanabilir
+assert.deepEqual({ cells: imp.cells, els: imp.els }, { cells: 2, els: 3 });
 server.listen(0);
 const base = `http://127.0.0.1:${server.address().port}`;
 const get = async q => { const r = await fetch(base + q); return { status: r.status, body: r.headers.get('content-type')?.includes('json') ? await r.json() : await r.text(), cc: r.headers.get('cache-control') }; };
+
+{ const h0 = hits, r0 = await get('/api/cells?k=12200:2200,12201:2201,12203:2203');
+  const a = r0.body.cells['12200:2200'], w = a.find(e => e.id === 10);
+  assert.deepEqual(r0.body.missing, []); assert.equal(hits, h0, 'içe aktarılan alanda Overpass yok');
+  assert.equal(a.length, 2); assert.equal(w.tags.name, 'A B,C'); assert.deepEqual(w.geometry[0], { lat: 61.0011, lon: 11.0011 }); assert.equal(w.type, 'way');
+  const rel = r0.body.cells['12201:2201'][0]; assert.equal(rel.type, 'relation'); assert.deepEqual(rel.members.map(m => [m.ref, m.role]), [[11, 'outer']]);
+  assert.deepEqual(r0.body.cells['12203:2203'], [], 'alan içinde binasız hücre'); }
 
 // 1. ilk istek: eksik hücreler Overpass'tan (tek çağrı), hücrelere dağıtılır, boş hücre de saklanır
 const k = '11537:2384,11538:2384,11537:2385'; // i = floor(lat/0.005), j = floor(lon/0.005)

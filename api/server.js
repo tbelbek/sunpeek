@@ -101,8 +101,26 @@ export function createServer(sql, { log = console } = {}) {
     return keys;
   }
 
-  let osmDownUntil = 0;
+  // İçe aktarılmış şehirler (import.mjs): oradaki hücreler doğrudan osm_cells'ten; alan içinde olup orada olmayan hücre binasızdır.
+  // Alan sınırları 5 dakikada bir okunur (içe aktarma ayrı süreçte çalışır).
+  let cover = [], coverAt = 0;
+  const inRing = (r, la, lo) => { let c = false; for (let a = 0, b = r.length - 1; a < r.length; b = a++)
+    if ((r[a][0] > la) !== (r[b][0] > la) && lo < (r[b][1] - r[a][1]) * (la - r[a][0]) / (r[b][0] - r[a][0]) + r[a][1]) c = !c; return c; };
+  const covered = k => { const [i, j] = k.split(':').map(Number), la = (i + 0.5) * CELL, lo = (j + 0.5) * CELL; return cover.some(r => inRing(r, la, lo)); };
   async function cells(keys) {
+    if (Date.now() - coverAt > 300000) { cover = (await sql`select ring from osm_cover`).map(r => r.ring); coverAt = Date.now(); }
+    const ij = keys.map(k => k.split(':').map(Number)), out = {};
+    for (const r of await sql`select o.i, o.j, o.data from osm_cells o
+      join unnest(${ij.map(x => x[0])}::int[], ${ij.map(x => x[1])}::int[]) as k(i, j) on o.i = k.i and o.j = k.j`) out[`${r.i}:${r.j}`] = r.data;
+    for (const k of keys) if (!(k in out) && covered(k)) out[k] = [];
+    const rest = keys.filter(k => !(k in out));
+    if (!rest.length) return { cells: out, missing: [] };
+    const r = await cached(rest);
+    return { cells: { ...out, ...r.cells }, missing: r.missing };
+  }
+
+  let osmDownUntil = 0;
+  async function cached(keys) {
     const ij = keys.map(k => k.split(':').map(Number));
     const rows = await sql`select c.i, c.j, c.data, c.fetched_at > now() - make_interval(days => ${TTL_DAYS}) as fresh
       from cells c join unnest(${ij.map(x => x[0])}::int[], ${ij.map(x => x[1])}::int[]) as k(i, j) on c.i = k.i and c.j = k.j`;
