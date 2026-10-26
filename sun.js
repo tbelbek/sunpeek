@@ -276,7 +276,7 @@ export function clearSkyDNI(alt) {
 // konumu saatin ortasında (t − 30 dk) alınır. Doğrudan kısım yalnız yüzey görüyorsa ve bina/tepe kesmiyorsa sayılır;
 // dağınık kısım izotropik gök: DHI·(1+cos eğim)/2 (çevre binaların gökyüzünü kısmen kapatması ihmal edilir).
 export function annualPOA(env, f, eye, tilt, hourly) {
-  const { buildings, own } = localize(env.el, f.lat, f.lon, env.ground), all = buildings.concat(own);
+  const all = candidates(env, f);
   const zEye = (env.ground ? env.ground(f.lat, f.lon) : 0) + eye, sky = (1 + Math.cos(tilt * rad)) / 2;
   let beam = 0, diffuse = 0;
   for (let i = 0; i < hourly.t.length; i++) {
@@ -307,10 +307,23 @@ export const pvYield = poa => ({ perKWp: poa * PV.pr, perM2: poa * PV.eff * PV.p
 // güneş ufkun altındaysa dilim yok. Gün (y, m, d), tz saat diliminde (null = tarayıcı).
 // tilt: 90 = duvar (varsayılan); daha küçükse aynı yöne bakan çatı paneli (eye o zaman çatı yüksekliği olmalı).
 // Her dilime geliş açısı (inc) eklenir; vis dilimlerinden açık gök doğrudan enerji kWh/m² (energy) toplanır.
+// Cephe için gölge adayı binalar: yalnız duvarın önündeki yarım düzlemde (arkadaki bina o duvara gölge yapamaz) ve 400 m içinde.
+// Pahalı yerelleştirme (tüm çekilen binalar) cephe başına bir kez yapılır ve env üzerinde saklanır; kat/aralık/yıllık hesap aynısını kullanır.
+const CAND = new WeakMap();
+function candidates(env, f) {
+  let m = CAND.get(env); if (!m) CAND.set(env, m = new Map());
+  const key = `${f.lat},${f.lon},${f.az},${f.id},${env.gs ?? 1}`;
+  if (!m.has(key)) {
+    const { buildings, own } = localize(env.el, f.lat, f.lon, env.ground), nx = Math.sin(f.az * rad), ny = Math.cos(f.az * rad);
+    const all = buildings.concat(own).filter(b => b.id === f.id || (Math.hypot(b.cx, b.cy) < 400 && b.ring.some(([x, y]) => x * nx + y * ny > 0)));
+    if (env.gs) for (const b of all) if (b.guessed) b.h *= env.gs;
+    m.set(key, all);
+  }
+  return m.get(key);
+}
 // env.gs (isteğe bağlı): yüksekliği tahmin edilen binaları bu katsayıyla ölçekle (belirsizlik aralığı için)
 export function facadeDay(env, f, eye, y, m, d, step = 5, tz = null, tilt = 90) {
-  const { buildings, own } = localize(env.el, f.lat, f.lon, env.ground), all = buildings.concat(own);
-  if (env.gs) for (const b of all) if (b.guessed) b.h *= env.gs;
+  const all = candidates(env, f);
   const zEye = (env.ground ? env.ground(f.lat, f.lon) : 0) + eye, slots = [];
   // Gerçek anlar üzerinden yerel gece yarısından ertesi gece yarısına: yaz saati günlerinde 23/25 saat doğru sayılır
   const n = new Date(Date.UTC(y, m - 1, d + 1)), t0 = +zoned(y, m, d, 0, tz), t1 = +zoned(n.getUTCFullYear(), n.getUTCMonth() + 1, n.getUTCDate(), 0, tz);

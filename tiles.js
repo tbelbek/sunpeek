@@ -117,15 +117,29 @@ const area = r => { let a = 0; for (let i = 1; i < r.length; i++) a += r[i - 1][
 const hash = s => { let h = 2166136261; for (const c of String(s)) h = Math.imul(h ^ c.codePointAt(0), 16777619); return h >>> 0; };
 
 // Overture binaları → Overpass biçiminde öğeler (way + tags + geometry), böylece hesap aynı kalır.
+// Karo (z14 ≈ 1–2 km) bütün olarak önbelleğe girer: yakında başka bir bina seçilince ağ isteği olmaz.
+// cache: { get(key) → öğeler | undefined, put(key, öğeler) }; anahtar sürümü içerir, yeni Overture sürümünde kendiliğinden yenilenir.
 // ponytail: karo sınırında kesilen bina iki parça olur; aynı kimlikten en büyük parça tutulur (sınırdaki bina biraz kısalabilir).
-export async function overtureBuildings(lat, lon, r = 400, signal) {
+export async function overtureBuildings(lat, lon, r = 400, signal, cache = null) {
   const h = await header(OVERTURE, signal), z = Math.min(14, h.maxZ);
   const dLat = r / 111320, dLon = r / (111320 * Math.cos(lat * Math.PI / 180));
   const x0 = Math.floor(lon2x(lon - dLon, z)), x1 = Math.floor(lon2x(lon + dLon, z)), y0 = Math.floor(lat2y(lat + dLat, z)), y1 = Math.floor(lat2y(lat - dLat, z));
-  const best = new Map();
+  const all = [];
   for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+    const key = `ovt:${OVERTURE.split('/').at(-2)}:${z}/${x}/${y}`;
+    let els = await cache?.get(key);
+    if (!els) { els = await overtureTile(z, x, y, signal); cache?.put(key, els); }
+    all.push(...els);
+  }
+  const near = e => e.geometry.some(g => Math.abs(g.lat - lat) < dLat && Math.abs(g.lon - lon) < dLon); // karo yarıçaptan geniş
+  const seen = new Map(); for (const e of all) if (near(e) && (seen.get(e.id)?.geometry.length ?? 0) < e.geometry.length) seen.set(e.id, e);
+  return [...seen.values()];
+}
+async function overtureTile(z, x, y, signal) {
+  const best = new Map();
+  {
     const t = await getTile(OVERTURE, z, x, y, signal);
-    if (!t) continue;
+    if (!t) return [];
     const L = decodeMVT(t);
     for (const [layer, part] of [['building', false], ['building_part', true]]) for (const f of L[layer] ?? []) for (const ring of f.rings) {
       const a = area(ring); if (a <= 0) continue;
@@ -139,22 +153,26 @@ export async function overtureBuildings(lat, lon, r = 400, signal) {
       best.set(key, { a, el: { type: 'way', id: 1e15 + hash(key), tags, geometry } });
     }
   }
-  const near = e => e.geometry.some(g => Math.abs(g.lat - lat) < dLat && Math.abs(g.lon - lon) < dLon); // karo yarıçaptan geniş
-  return [...best.values()].map(v => v.el).filter(near);
+  return [...best.values()].map(v => v.el);
 }
 
 // ---------- Arazi: terrarium PNG karoları ----------
 // yükseklik = R·256 + G + B/256 − 32768. Yakın noktalar için z13 (~15 m), uzak ufuk için z11 (~60 m) yeter.
-export async function terrariumElev(pts, signal) {
+// cache: { get(key) → Blob | undefined, put(key, Blob) } — karolar durağan, uzun süre saklanabilir
+export async function terrariumElev(pts, signal, cache = null) {
   const lats = pts.map(p => p[0]), lons = pts.map(p => p[1]);
   const span = Math.max(Math.max(...lats) - Math.min(...lats), Math.max(...lons) - Math.min(...lons));
   const z = span < 0.03 ? 13 : 11, tiles = new Map();
   const px = async (lat, lon) => {
     const fx = lon2x(lon, z), fy = lat2y(lat, z), tx = Math.floor(fx), ty = Math.floor(fy), k = `${tx}/${ty}`;
     if (!tiles.has(k)) tiles.set(k, (async () => {
-      const r = await fetch(TERRARIUM(z, tx, ty), { signal });
-      if (!r.ok) throw new Error('terrain HTTP ' + r.status);
-      const img = await createImageBitmap(await r.blob()), c = new OffscreenCanvas(256, 256), g = c.getContext('2d');
+      let blob = await cache?.get(`tr:${z}/${k}`);
+      if (!blob) {
+        const r = await fetch(TERRARIUM(z, tx, ty), { signal });
+        if (!r.ok) throw new Error('terrain HTTP ' + r.status);
+        blob = await r.blob(); cache?.put(`tr:${z}/${k}`, blob);
+      }
+      const img = await createImageBitmap(blob), c = new OffscreenCanvas(256, 256), g = c.getContext('2d');
       g.drawImage(img, 0, 0); return g.getImageData(0, 0, 256, 256).data;
     })());
     const d = await tiles.get(k), i = (Math.min(255, Math.floor((fy - ty) * 256)) * 256 + Math.min(255, Math.floor((fx - tx) * 256))) * 4;

@@ -1,5 +1,6 @@
 // SunPeek uygulama mantığı (index.html'den ayrıldı: CSP satır içi betiğe izin vermesin diye)
 import { overtureBuildings, terrariumElev } from './tiles.js';
+import { cget, cput, cmany, cprune, DAY } from './cache.js';
 import { t as tr, lang, LANGS, dirs, dirsLong, applyStatic } from './i18n.js';
 import { STOREY, zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip, annualPOA, pvYield, PV, shadowRing } from './sun.js';
 
@@ -173,14 +174,14 @@ const IRR_YEAR = new Date().getUTCFullYear() - 1, IRR_YEARS = 3; // tek yıl yan
 const HOME_KWH = 3600, HOME_KWP = 5, SOLAR_LOW = 0.8;
 async function fetchIrr(lat, lon) {
   const key = `irr:${IRR_YEAR - IRR_YEARS + 1}-${IRR_YEAR}:${lat.toFixed(1)},${lon.toFixed(1)}`;
-  const hit = lsJSON(key, x => x && Array.isArray(x.dni) && x.dni.length > 8000 * IRR_YEARS);
-  if (hit) return hit;
+  const hit = (await cget(key))?.v; // anahtar yılları içerir: yıl değişince kendiliğinden yenilenir
+  if (hit?.dni?.length > 8000 * IRR_YEARS) return hit;
   const r = await sfetch('irr', `https://archive-api.open-meteo.com/v1/archive?latitude=${lat.toFixed(2)}&longitude=${lon.toFixed(2)}&start_date=${IRR_YEAR - IRR_YEARS + 1}-01-01&end_date=${IRR_YEAR}-12-31&hourly=direct_normal_irradiance,diffuse_radiation&timezone=GMT&timeformat=unixtime`, { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const h = (await r.json()).hourly;
   const d = { t0: h.time[0] * 1000, dni: h.direct_normal_irradiance.map(v => Math.round(v || 0)), dhi: h.diffuse_radiation.map(v => Math.round(v || 0)) };
   if (!d.dni.length) throw new Error('no data');
-  lsSet(key, JSON.stringify(d));
+  cput(key, d);
   return d;
 }
 function showAnnual() {
@@ -416,24 +417,51 @@ function rainbow() {
 
 // ---------- binalar ----------
 // Tarayıcıda saklanır (yer dolarsa eski bina önbellekleri silinir); aynı bölgeye dönünce anında gelir.
-// Binalar: önce OpenStreetMap (Overpass, aynalarıyla); hiçbiri yanıt vermezse Overture Maps (statik karolar, sınırsız).
-// İkisi ayrı anahtarla saklanır: yedekten gelen veri, Overpass döndüğünde onun yerini kalıcı olarak tutmasın.
-const store = (key, v) => { const txt = JSON.stringify(v); for (let i = 0; i < 2; i++) try { localStorage.setItem(key, txt); break; }
-  catch { Object.keys(localStorage).filter(k => /^ov[t]?:/.test(k)).forEach(k => localStorage.removeItem(k)); } };
-async function fetchEls(lat, lng) {
-  const key = `ov:${lat},${lng}`, hit = lsJSON(key, Array.isArray);
-  if (hit) return hit;
-  try { const el = await fetchOverpass(lat, lng); store(key, el); return el; }
-  catch (err) {
-    const k2 = `ovt:${lat},${lng}`, hit2 = lsJSON(k2, Array.isArray);
-    if (hit2) { useOverture(); return hit2; }
-    try { const el = await backup('overture', () => overtureBuildings(lat, lng, 400, AbortSignal.timeout(30000))); store(k2, el); useOverture(); return el; }
-    catch { throw err; } // iki kaynak da yoksa Overpass'ın hatası gösterilir
-  }
+// Binalar ~550 m'lik ızgara hücrelerinde saklanır (IndexedDB). Nokta için ±600 m (≈1 km kare) gereken hücreler:
+// taze olanlar önbellekten, eksikler tek bir Overpass kutu sorgusuyla. Yakında başka bir duvar seçilince ağ isteği olmaz.
+// Tazelik: 30 gün. Bayat hücre hemen kullanılır ve arka planda yenilenir; yenileme başarısızsa eskisi kalır.
+// Overpass hiç yanıt vermezse Overture Maps karoları (sürüm anahtarlı, ayrı saklanır; OSM hücrelerine karışmaz).
+const CELL = 0.005, BLD_TTL = 30 * DAY, BLD_R = 600, HEDGE = 8000;
+let osmDownUntil = 0;
+const idb = { get: async k => (await cget(k))?.v, put: cput };
+function cellsAround(lat, lng) {
+  const dLat = BLD_R / 111320, dLon = BLD_R / (111320 * Math.cos(lat * Math.PI / 180)), out = [];
+  for (let i = Math.floor((lat - dLat) / CELL); i <= Math.floor((lat + dLat) / CELL); i++)
+    for (let j = Math.floor((lng - dLon) / CELL); j <= Math.floor((lng + dLon) / CELL); j++) out.push(`oc:${i}:${j}`);
+  return out;
+}
+async function fetchCells(keys) { // eksik/bayat hücreleri kapsayan tek kutu; her öğe ilk noktasının hücresine yazılır
+  const ij = keys.map(k => k.split(':').slice(1).map(Number)), is = ij.map(x => x[0]), js = ij.map(x => x[1]);
+  const box = [Math.min(...is) * CELL, Math.min(...js) * CELL, (Math.max(...is) + 1) * CELL, (Math.max(...js) + 1) * CELL];
+  const el = await fetchOverpass(box), by = new Map(keys.map(k => [k, []]));
+  for (const e of el) { const g = e.geometry?.[0] ?? e.members?.find(m => m.geometry)?.geometry?.[0]; if (!g) continue;
+    by.get(`oc:${Math.floor(g.lat / CELL)}:${Math.floor(g.lon / CELL)}`)?.push(e); }
+  await Promise.all([...by].map(([k, v]) => cput(k, v)));
+  return by;
+}
+// Hesaba yalnız 500 m içindekiler girer (en alçak kış güneşinde bile daha uzaktaki binanın gölgesi düşmez); ±600 m önbellek içindir
+const within = (lat, lng, m = 500) => { const k = Math.cos(lat * Math.PI / 180);
+  return e => { const g = e.geometry?.[0] ?? e.members?.find(x => x.geometry)?.geometry?.[0]; return g && Math.hypot((g.lat - lat) * 111320, (g.lon - lng) * 111320 * k) < m; }; };
+async function fetchEls(lat, lng) { return (await fetchArea(lat, lng)).filter(within(lat, lng)); }
+async function fetchArea(lat, lng) {
+  const keys = cellsAround(lat, lng), { fresh, stale, missing } = await cmany(keys, BLD_TTL);
+  if (stale.size) fetchCells([...stale.keys()]).catch(() => {}); // arka planda tazele
+  if (!missing.length) return [...fresh.values(), ...stale.values()].flat();
+  // Overpass'a 10 sn önce başlama hakkı; yanıt yoksa ya da hata verirse Overture paralel başlar, önce gelen kullanılır.
+  // Geç gelen Overpass yanıtı yine hücrelere yazılır: bir sonraki ziyarette ana kaynağın verisi önbellekten gelir.
+  const osm = fetchCells(missing).then(got => [...fresh.values(), ...stale.values(), ...got.values()].flat());
+  let ovt = null;
+  const startOvt = () => ovt ??= backup('overture', () => overtureBuildings(lat, lng, BLD_R, AbortSignal.timeout(30000), idb)).then(el => (useOverture(), el));
+  // devre kesici: Overpass yakın zamanda yanıt veremediyse Overture beklemeden başlar (yarış yine sürer)
+  const late = new Promise((res, rej) => {
+    const t = setTimeout(() => { osmDownUntil = Date.now() + 600000; startOvt().then(res, rej); }, Date.now() < osmDownUntil ? 0 : HEDGE);
+    osm.then(() => { clearTimeout(t); osmDownUntil = 0; }, () => { clearTimeout(t); osmDownUntil = Date.now() + 600000; startOvt().then(res, rej); });
+  });
+  try { return await Promise.any([osm, late]); } catch (e) { throw e.errors?.[0] ?? e; } // ikisi de yoksa Overpass'ın hatası
 }
 const useOverture = () => map.attributionControl.addAttribution('© <a href="https://overturemaps.org" target="_blank" rel="noopener">Overture Maps</a>');
-async function fetchOverpass(lat, lng) {
-  const a = `around:400,${lat},${lng}`; // kış güneşi alçak: 30 m bina ~340 m'ye gölge düşürür
+async function fetchOverpass([s, w, n, e]) { // kutu: güney, batı, kuzey, doğu (kış güneşi alçak: 30 m bina ~340 m'ye gölge düşürür)
+  const a = `${s.toFixed(4)},${w.toFixed(4)},${n.toFixed(4)},${e.toFixed(4)}`;
   const q = `[out:json][timeout:60];(way(${a})["building"];way(${a})["building:part"];relation(${a})["building"];);out tags geom;`;
   let err;
   for (const url of OVERPASS) { // ana sunucu yavaş (30+ sn) ya da 429/502/504 verebilir, sırayla aynalar
@@ -447,14 +475,18 @@ async function fetchOverpass(lat, lng) {
 }
 // Open-Meteo yükseklik API'si (Copernicus GLO-90), 100 noktalık parçalar halinde.
 // Sonuç tarayıcıda saklanır (aynı yere tekrar gelince istek yok); 429'da bekleyip tekrar dener.
+// Zemin kotu: ana kaynak AWS Terrain Tiles (bina ve ağaç yüksekliği içermeyen arazi modeli; karolar 1 yıl saklanır),
+// yedek Open-Meteo (Copernicus GLO-90; sonucu da 1 yıl saklanır). Arazi yıllar içinde değişmez.
+const TERR_TTL = 365 * DAY;
+const tileCache = { get: async k => { const r = await cget(k); return r && Date.now() - r.t < TERR_TTL ? r.v : undefined; }, put: cput };
 async function fetchElev(pts, key) {
-  const hit = key && lsJSON(key, x => Array.isArray(x) && x.length === pts.length && x.every(Number.isFinite));
-  if (hit) return hit;
-  let out;
-  try { out = await fetchMeteoElev(pts); }
-  catch (err) { try { out = await backup('terr', () => terrariumElev(pts, AbortSignal.timeout(30000))); } catch { throw err; } } // yedek: AWS Terrain Tiles
-  if (key) try { localStorage.setItem(key, JSON.stringify(out)); } catch {}
-  return out;
+  try { net('terr'); return await terrariumElev(pts, AbortSignal.timeout(30000), tileCache); }
+  catch (err) {
+    svcFail('terr', err.message);
+    const hit = await tileCache.get('om:' + key);
+    if (Array.isArray(hit) && hit.length === pts.length) return hit;
+    const out = await fetchMeteoElev(pts); cput('om:' + key, out); return out;
+  }
 }
 async function fetchMeteoElev(pts) {
   const out = [];
@@ -557,15 +589,14 @@ let timeTouched = false;
 const validTZ = z => { if (typeof z !== 'string' || z.length > 64) return false; try { new Intl.DateTimeFormat('en', { timeZone: z }); return true; } catch { return false; } };
 let tzSeq = 0;
 async function fetchTZ(lat, lng, retried = false) {
-  const key = `tz:${lat.toFixed(1)},${lng.toFixed(1)}`, seq = retried ? tzSeq : ++tzSeq;
-  let tz = lsGet(key);
-  if (tz && !validTZ(tz)) { try { localStorage.removeItem(key); } catch {} tz = null; }
+  const seq = retried ? tzSeq : ++tzSeq;
+  let tz = null;
+  // ana kaynak: uygulamaya gömülü saat dilimi haritası (ağ isteği yok); yalnız o başarısızsa Open-Meteo
+  try { const { default: lookup } = await import('./tz.js'); tz = lookup(lat, lng); if (!validTZ(tz)) tz = null; } catch { tz = null; }
   if (!tz) try {
     const r = await sfetch('tz', `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lng.toFixed(3)}&timezone=auto&forecast_days=1&daily=sunrise`, { signal: AbortSignal.timeout(10000) });
-    tz = (await r.json()).timezone;
-    if (validTZ(tz)) lsSet(key, tz); else tz = null; // doğrulanmadan saklanmaz
+    tz = (await r.json()).timezone; if (!validTZ(tz)) tz = null;
   } catch { tz = null; }
-  if (!tz) try { const { default: lookup } = await import('./tz.js'); tz = lookup(lat, lng); if (!validTZ(tz)) tz = null; } catch { tz = null; } // yedek: uygulamaya gömülü saat dilimi haritası (ağ yok)
   if (seq !== tzSeq) return; // bu arada başka yere gidildi: eski yanıt uygulanmaz
   if (!tz) {
     if (TZ) { TZ = null; draw(); } // bilinmiyorsa önceki yerin saat dilimi kalmasın
@@ -786,7 +817,7 @@ $('netbtn').onclick = () => {
   const errOf = { dsOverpass: 'overpass', dsOverture: 'overture', dsElev: 'elev', dsTerr: 'terr', dsTZ: 'tz', dsNom: 'nom', dsPhoton: 'photon', dsIrr: 'irr', dsTiles: 'tiles' };
   const row = (k, n) => { const e = NETERR[errOf[k]]; return `<tr><td>${esc(tr(k))}${e ? `<div class="bad">${esc(tr('svcErr', { e: e.msg, t: e.t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', ...H12() }) }))}</div>` : ''}</td><td>${n == null ? '' : esc(tr('reqs', { n }))}</td></tr>`; };
   openCard(`<h2 id="cardtitle">${tr('netTitle')}</h2><p>${tr('netOwn')}</p>
-    <table class="net">${row('dsOverpass', NET.overpass)}${NET.overture ? row('dsOverture', NET.overture) : ''}${row('dsElev', NET.elev)}${NET.terr ? row('dsTerr', NET.terr) : ''}${row('dsTZ', NET.tz)}${row('dsNom', NET.nom)}${NET.photon ? row('dsPhoton', NET.photon) : ''}${row('dsIrr', NET.irr)}${row('dsTiles', NET.tiles)}${row('dsCdn')}${row('dsCf')}</table>
+    <table class="net">${row('dsOverpass', NET.overpass)}${NET.overture ? row('dsOverture', NET.overture) : ''}${row('dsTerr', NET.terr)}${NET.elev ? row('dsElev', NET.elev) : ''}${NET.tz ? row('dsTZ', NET.tz) : ''}${row('dsNom', NET.nom)}${NET.photon ? row('dsPhoton', NET.photon) : ''}${row('dsIrr', NET.irr)}${row('dsTiles', NET.tiles)}${row('dsCdn')}${row('dsCf')}</table>
     <div class="actions"><button class="btn" id="netClose">${tr('close')}</button></div>`);
   $('netClose').onclick = closeCard;
 };
@@ -821,7 +852,7 @@ function confRange() {
   const [y, m, d] = $('date').value.split('-').map(Number), S = SEASON(house.lat);
   const days = [[tr('today'), y, m, d], ...[['summer', S.summer], ['winter', S.winter]].map(([k, md]) => [tr(k), y, ...md.split('-').map(Number)])];
   return days.map(([lbl, yy, mm, dd]) => {
-    const h = gs => facadeCached(`r${gs}|${yy}-${mm}-${dd}`, () => facadeDay({ ...house.env, gs }, house, surfEye(), yy, mm, dd, 5, TZ, tilt)).visH;
+    const h = gs => facadeCached(`r${gs}|${yy}-${mm}-${dd}`, () => facadeDay((house.envGs ??= {})[gs] ??= { ...house.env, gs }, house, surfEye(), yy, mm, dd, 5, TZ, tilt)).visH;
     const lo = h(GUESS_HI), hi = h(GUESS_LO);
     return `<tr><td>${esc(lbl)}</td><td>${Math.abs(hi - lo) < 1 / 12 ? esc(dur(lo)) : `${esc(dur(lo))} – ${esc(dur(hi))}`}</td></tr>`;
   }).join('');
@@ -848,5 +879,7 @@ else {
   // izin gerektirmeyen cihazlarda (Android) pusula kendiliğinden açılır; iOS'ta üstteki oka dokunulur
   if (matchMedia('(pointer: coarse)').matches && window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission !== 'function') requestCompass();
 }
+cprune(400 * DAY); // hiçbir TTL bundan uzun değil
+try { Object.keys(localStorage).filter(k => /^(ov|ovt|zg|hz|irr|tz):/.test(k)).forEach(k => localStorage.removeItem(k)); } catch {} // eski localStorage önbellekleri
 if (new URLSearchParams(location.search).has('smoke')) { setPoint(51.4779, -0.0015, false); $('time').value = 720; draw(); } // duman testi: çizim de hatasız çalışmalı
 document.documentElement.dataset.ready = '1'; // duman testi (deploy): uygulama sonuna kadar hatasız yüklendi

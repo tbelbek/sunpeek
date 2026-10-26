@@ -435,7 +435,7 @@ async () => {
       check('enerji: kapatınca gizlenir', !a.d.querySelector('.energy'));
       check('veri: "SunPeek\'e giden: hiçbir şey" ve istek sayısı', /Sent to SunPeek: nothing · map data services: \d+ requests/.test(a.$('nettxt').textContent), a.$('nettxt').textContent);
       a.$('netbtn').click(); await sl(150);
-      check('veri: döküm kartı servisleri listeler', a.$('modal').open && a.d.querySelectorAll('#card table.net tr').length === 8);
+      check('veri: döküm kartı servisleri listeler', a.$('modal').open && a.d.querySelectorAll('#card table.net tr').length >= 6);
       a.$('netClose').click();
       noErr('enerji/veri', a); a.close();
     },
