@@ -38,7 +38,7 @@ let cmpOff = +(localStorage.getItem('cmpOff') || 0); // pusula düzeltmesi (many
 
 let TZ = null; // konumun saat dilimi (Open-Meteo); gelene kadar tarayıcınınki
 // Saat biçimi: '12' / '24' / boş = dilin alışkanlığı (Daha fazla › saat)
-let CLOCK = lsGet('clock'); const H12 = () => CLOCK ? { hour12: CLOCK === '12' } : {};
+let CLOCK = (() => { try { return localStorage.getItem('clock'); } catch { return null; } })(); // lsGet aşağıda tanımlı const H12 = () => CLOCK ? { hour12: CLOCK === '12' } : {};
 const hm = t => t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', timeZone: TZ ?? undefined, ...H12() });
 const hLbl = h => (H12().hour12 ?? new Intl.DateTimeFormat(lang, { hour: 'numeric' }).resolvedOptions().hour12) ? `${h % 12 || 12}${h < 12 ? 'a' : 'p'}` : h; // ışın etiketi
 const pad = n => String(n).padStart(2, '0');
