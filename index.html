@@ -65,7 +65,7 @@
   body.expanded #expandbtn svg { transform: rotate(180deg); } @media (min-width: 701px) { #expandbtn { display: none; } #sheet > summary .chev { margin-left: auto; } } #sheet:not([open]) > summary .chev { transform: rotate(180deg); }
   .handle { position: absolute; left: 50%; top: 6px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--line); }
   .dot { width: 10px; height: 10px; border-radius: 5px; flex: none; background: var(--muted); }
-  .dot.vis { background: var(--ok); } .dot.block { background: var(--bad); } .dot.terrain { background: var(--hill); } .dot.behind, .dot.night { background: #9ca3af; }
+  .dot.vis { background: var(--ok); } .dot.block { background: var(--bad); } .dot.terrain { background: var(--hill); } .dot.behind, .dot.night, .dot.unknown { background: #9ca3af; }
   #sum { flex: 1; min-width: 0; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hint { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border-radius: 12px; background: var(--soft); color: var(--fg); }
   .hint .ic { color: var(--blue); margin-top: 1px; }
@@ -112,7 +112,7 @@
   details.sec { border-top: 1px solid var(--line); margin-top: 12px; }
   details.sec > summary { display: flex; align-items: center; justify-content: space-between; min-height: 48px; list-style: none; cursor: pointer; font-weight: 600; }
   details.sec > summary .ic { color: var(--muted); transition: transform .2s; } details.sec[open] > summary .ic { transform: rotate(180deg); }
-  #lang { height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+  #lang, #clock { height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
   table { width: 100%; border-collapse: collapse; margin-top: 8px; } td { padding: 6px 0; border-top: 1px solid var(--line); } td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
   .leg { display: inline-block; width: 18px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
   .hrow { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); } .hgo { flex: 1; min-width: 0; padding: 4px 0; border: 0; background: none; text-align: left; }
@@ -218,6 +218,7 @@
   <details id="histbox" class="sec"><summary><span><span data-t="history"></span> (<span id="hcount">0</span>)</span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div id="hist"></div></details>
   <details id="morebox" class="sec"><summary><span data-t="more"></span><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
     <div class="field"><label for="lang"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg></label><select id="lang" aria-label="Language"></select></div>
+    <div class="field"><label for="clock" data-t="clockLabel"></label><select id="clock"></select></div>
     <table>
       <tr><td data-t="riseSet"></td><td id="riseset"></td></tr>
       <tr><td data-t="noon"></td><td id="noon"></td></tr>

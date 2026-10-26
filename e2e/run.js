@@ -282,6 +282,9 @@ async () => {
       check('ağ hatası: görünür bina mesajı', /Couldn't load buildings/.test(t), t);
       check('ağ hatası: arazi mesajı', /ground elevation|horizon/.test(t), t);
       check('ağ hatası: ↻ Tekrar dene düğmesi', a.$('retry'));
+      a.$('time').value = 720; a.$('time').dispatchEvent(new a.win.Event('input')); await sl(200);
+      const green = Object.values(a.sp.map._layers).filter(l => l.options?.color === '#1ad940').length;
+      check('ağ hatası: bina yokken "güneş var" denmez (gri, bilinmiyor)', green === 0 && /unknown/.test(a.$('now').textContent), `${green} yeşil · ${a.$('now').textContent}`);
       check('ağ hatası: gün doğumu yine hesaplandı', /\d/.test(a.$('riseset').textContent), a.$('riseset').textContent);
       a.win.fetch = realFetch;
       a.$('retry').click();
@@ -340,6 +343,10 @@ async () => {
       check('dokunma alanları ≥ 34 px', !small.length, small.join(', '));
       const unl = [...a.d.querySelectorAll('button')].filter(b => b.offsetParent && !b.textContent.trim() && !b.getAttribute('aria-label')).map(b => b.id || b.className);
       check('ikon düğmelerinin hepsinde aria-label', !unl.length, unl.join(', '));
+      const setClock = v => { a.$('clock').value = v; a.$('clock').dispatchEvent(new a.win.Event('change')); };
+      setClock('24'); check('saat: 24 saat', /^\d\d:\d\d$/.test(a.$('tval').textContent), a.$('tval').textContent);
+      setClock('12'); check('saat: 12 saat (AM/PM)', /AM|PM/.test(a.$('tval').textContent), a.$('tval').textContent);
+      setClock(''); a.win.localStorage.removeItem('clock');
       noErr('kontroller', a); a.close();
     },
     // 18. Hata regresyonu: pusula açıkken (GPS izleniyor) adres aranınca nokta adreste kalmalı, eski cephe bırakılmalı, ışınlar çizilmeli

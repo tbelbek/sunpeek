@@ -37,7 +37,10 @@ let katSrc = null; // 'gps': kat GPS'ten geldi
 let cmpOff = +(localStorage.getItem('cmpOff') || 0); // pusula düzeltmesi (manyetik sapma + cihaz hatası), duvara göre kalibre edilir
 
 let TZ = null; // konumun saat dilimi (Open-Meteo); gelene kadar tarayıcınınki
-const hm = t => t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', timeZone: TZ ?? undefined });
+// Saat biçimi: '12' / '24' / boş = dilin alışkanlığı (Daha fazla › saat)
+let CLOCK = lsGet('clock'); const H12 = () => CLOCK ? { hour12: CLOCK === '12' } : {};
+const hm = t => t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', timeZone: TZ ?? undefined, ...H12() });
+const hLbl = h => (H12().hour12 ?? new Intl.DateTimeFormat(lang, { hour: 'numeric' }).resolvedOptions().hour12) ? `${h % 12 || 12}${h < 12 ? 'a' : 'p'}` : h; // ışın etiketi
 const pad = n => String(n).padStart(2, '0');
 const dirName = a => dirs[Math.round(a / 45) % 8];
 const dm = md => new Date(2000, +md.slice(0, 2) - 1, +md.slice(3)).toLocaleDateString(lang, { day: 'numeric', month: 'short' });
@@ -46,6 +49,8 @@ const SEASON = lat => lat < 0 ? { spring: '09-23', summer: '12-21', autumn: '03-
 applyStatic();
 for (const [k, v] of Object.entries(LANGS)) $('lang').add(new Option(v, k, false, k === lang));
 $('lang').onchange = () => { localStorage.setItem('lang', $('lang').value); location.reload(); };
+for (const [v, k] of [['', 'clockAuto'], ['24', 'clock24'], ['12', 'clock12']]) $('clock').add(new Option(tr(k), v, false, v === (CLOCK ?? '')));
+$('clock').onchange = () => { CLOCK = $('clock').value || null; CLOCK ? lsSet('clock', CLOCK) : localStorage.removeItem('clock'); draw(); renderHist(); };
 const today = new Date();
 $('date').value = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
 $('time').value = today.getHours() * 60 + today.getMinutes();
@@ -73,7 +78,7 @@ function label(at, text) { L.marker(at, { icon: L.divIcon({ className: 'lbl', ht
 const dur = h => { const t = Math.round(h * 60); return t < 60 ? tr('minFmt', { m: t }) : tr('dayLenFmt', { h: Math.floor(t / 60), m: t % 60 }); };
 const cap = s => s.charAt(0).toLocaleUpperCase(lang) + s.slice(1);
 const floorName = k => k === 0 ? tr('groundFloor') : tr('floorN', { k });
-const COL = { vis: '#1ad940', block: '#f7332a', terrain: '#a0522d', behind: '#dddddd' };
+const COL = { vis: '#1ad940', block: '#f7332a', terrain: '#a0522d', behind: '#dddddd', unknown: '#9ca3af' };
 
 // ---------- çizim ----------
 function draw() {
@@ -86,7 +91,7 @@ function draw() {
     house.day = facadeCached($('date').value, () => facadeDay(house.env, house, surfEye(), y, m, d, 5, TZ, tilt));
     for (const s of house.day.slots) { const lt = hmIn(s.t, TZ); if (lt.m % 30) continue;
       const full = lt.m === 0, end = ray(origin, s.az, full ? 150 : 120, { color: COL[s.state], weight: full ? 3 : 2, opacity: s.state === 'behind' ? 0.5 : 0.85 });
-      if (full) label(end, lt.h);
+      if (full) label(end, hLbl(lt.h));
     }
   } else {
     const state = obsState;
@@ -96,7 +101,7 @@ function draw() {
       if (p.alt <= 0) continue;
       const lt = hmIn(t, TZ), full = lt.m === 0;
       const end = ray(pt, p.az, full ? 150 : 120, { color: COL[state(p.alt, p.az)], weight: full ? 3 : 2, opacity: full ? 0.9 : 0.6 });
-      if (full) label(end, lt.h);
+      if (full) label(end, hLbl(lt.h));
     }
   }
   for (const [t, sym] of [[ev.sunrise, '↑'], [ev.sunset, '↓']]) if (t)
@@ -114,7 +119,7 @@ function draw() {
     const sl = house.day.slots.find(s => Math.abs(s.t - t) <= 150000), s = sl?.state ?? 'behind'; // 5 dk'lık dilim
     const by = sl?.by && B.buildings.find(b => b.id === sl.by);
     cls = s; st = tr({ vis: 'fVis', block: 'fBlock', terrain: 'fTerrain', behind: 'fBehind' }[s]) + (by ? tr('byBld', { h: Math.round(by.h), est: by.guessed ? tr('estimated') : '' }) : '');
-  } else { cls = obsState(p.alt, p.az); st = tr({ vis: 'oVis', block: 'oBlock', terrain: 'oTerrain' }[cls]); }
+  } else { cls = obsState(p.alt, p.az); st = tr({ vis: 'oVis', block: 'oBlock', terrain: 'oTerrain', unknown: 'oUnknown' }[cls]); }
   $('now').innerHTML = `<span class="dot ${cls}"></span><span>${st}</span>`;
   $('sumdot').className = 'dot ' + cls;
   // Cephe seçiliyse başlık günün cevabını verir; anlık durum saat kaydırıcısının altında (#now)
@@ -153,7 +158,7 @@ function clearFloor() {
 // Gözlemcinin bulunduğu nokta için güneş durumu: tepe (ufuk) ya da bina kesiyor mu?
 function obsState(alt, az) {
   if (last?.hz && z0() != null && alt < horizonAlt(last.hz, az, z0() + eye())) return 'terrain';
-  return blocked(B.buildings, alt, az, eye()) ? 'block' : 'vis';
+  return blocked(B.buildings, alt, az, eye()) ? 'block' : B.ok ? 'vis' : 'unknown'; // bina verisi yoksa "güneş var" denmez
 }
 // Cephe hesabı ağır (3 gün × 288 dilim): tarih+kat değişmedikçe yeniden hesaplama
 function facadeCached(key, fn) { key += '|' + kat() + '|' + TZ + '|' + tilt; return (house.cache[key] ??= fn()); }
@@ -306,7 +311,7 @@ function renderHist() {
   $('hist').innerHTML = list.map((e, i) => `<div class="hrow"><button class="hgo" type="button" data-i="${i}"><b>${esc(e.addr ?? `${e.lat.toFixed(5)}, ${e.lon.toFixed(5)}`)}</b>
       <div class="muted">${esc(tr('histFacade', { dir: dirName(e.az), az: Math.round(e.az), k: e.kat, h: Math.round(e.h), est: e.guessed ? tr('estimated') : '' }))}</div>
       <div class="muted">${esc(tr('histHours', { date: e.date, t: e.todayH.toFixed(1), s: e.summerH.toFixed(1), sw: e.summer, w: e.winterH.toFixed(1), ww: e.winter }))}</div>
-      <div class="muted">${esc(new Date(e.savedAt).toLocaleString(lang, { dateStyle: 'short', timeStyle: 'short' }))}</div></button>
+      <div class="muted">${esc(new Date(e.savedAt).toLocaleString(lang, { dateStyle: 'short', timeStyle: 'short', ...H12() }))}</div></button>
       <button data-del="${i}" class="iconbtn" aria-label="${tr('del')}" title="${tr('del')}">${icon('trash-2')}</button></div>`).join('') +
     (list.length ? `<button id="hclear" class="btn" style="width:100%;margin-top:8px">${tr('clearAll')}</button>` : `<div class="muted" style="padding-bottom:8px">${tr('histEmpty')}</div>`);
   $('hclear')?.addEventListener('click', () => { if (confirm(tr('confirmClear'))) putHist([]); });
@@ -459,7 +464,7 @@ function autoPick() {
 }
 async function refreshBuildings(force = false, attempt = 0) {
   const id = ++req; // her konum geçişi: bekleyen eski yanıt artık uygulanmaz
-  if (!force && last?.complete && pt.distanceTo([last.lat, last.lng]) < 120) { B = localize(last.el, pt.lat, pt.lng, last.ground); statB(); drawBuildings(); draw(); return autoPick(); }
+  if (!force && last?.complete && pt.distanceTo([last.lat, last.lng]) < 120) { B = localize(last.el, pt.lat, pt.lng, last.ground); B.ok = true; statB(); drawBuildings(); draw(); return autoPick(); }
   clearTimeout(autoRetry);
   // Çekim merkezi ~100 m'lik ızgaraya oturtulur: önbellek isabeti için; 400 m yarıçap yine de bolca kapsar
   const lat = +pt.lat.toFixed(3), lng = +pt.lng.toFixed(3);
@@ -472,7 +477,7 @@ async function refreshBuildings(force = false, attempt = 0) {
   if (id !== req) return;
   last = { el: el.value ?? [], ground: gr.value ? makeGround(lat, lng, gr.value) : null, hz: hz.value ? makeHorizon(hz.value) : null, lat, lng,
            complete: el.status === 'fulfilled' && !!gr.value && !!hz.value };
-  B = localize(last.el, pt.lat, pt.lng, last.ground); statB();
+  B = localize(last.el, pt.lat, pt.lng, last.ground); B.ok = el.status === 'fulfilled'; statB();
   const fails = [];
   if (el.status === 'rejected') fails.push(tr('bFail', { e: el.reason.message }));
   if (!last.ground) fails.push(tr('gFail', { e: gr.reason.message }).trim());
@@ -732,7 +737,7 @@ function showIntro(help = false) {
 $('helpbtn').onclick = () => showIntro(true);
 $('netbtn').onclick = () => {
   const errOf = { dsOverpass: 'overpass', dsElev: 'elev', dsTZ: 'tz', dsNom: 'nom', dsIrr: 'irr', dsTiles: 'tiles' };
-  const row = (k, n) => { const e = NETERR[errOf[k]]; return `<tr><td>${esc(tr(k))}${e ? `<div class="bad">${esc(tr('svcErr', { e: e.msg, t: e.t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' }) }))}</div>` : ''}</td><td>${n == null ? '' : esc(tr('reqs', { n }))}</td></tr>`; };
+  const row = (k, n) => { const e = NETERR[errOf[k]]; return `<tr><td>${esc(tr(k))}${e ? `<div class="bad">${esc(tr('svcErr', { e: e.msg, t: e.t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', ...H12() }) }))}</div>` : ''}</td><td>${n == null ? '' : esc(tr('reqs', { n }))}</td></tr>`; };
   openCard(`<h2 id="cardtitle">${tr('netTitle')}</h2><p>${tr('netOwn')}</p>
     <table class="net">${row('dsOverpass', NET.overpass)}${row('dsElev', NET.elev)}${row('dsTZ', NET.tz)}${row('dsNom', NET.nom)}${row('dsIrr', NET.irr)}${row('dsTiles', NET.tiles)}${row('dsCdn')}${row('dsCf')}</table>
     <div class="actions"><button class="btn" id="netClose">${tr('close')}</button></div>`);
