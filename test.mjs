@@ -131,6 +131,23 @@ console.log('ortanca ok');
 }
 console.log('güven ok');
 
+// Sağlamlık: kötü OSM etiketleri, antimeridyen, kutup, yaz saati
+assert.equal(height({ building: 'constructor' }).h, 9, 'prototip üyesi yükseklik olmaz');
+assert.equal(height({ height: 'Infinity' }).h, 9); assert.equal(height({ height: '-5' }).h, 9); assert.equal(height({ height: '1e9' }).h, 9);
+{
+  const F = frame(0, 179.9995), [x] = F.to(0, -179.9995); near(x, 111.32, 0.5, 'antimeridyenin öbür yanı ~111 m doğuda');
+  near(F.from(x, 0)[1], -179.9995, 1e-6, 'geri dönüşüm de sarılır');
+  assert.ok(Number.isFinite(frame(90, 0).to(89.999, 10)[0]), 'kutupta sonlu');
+}
+{
+  const f = { lat: 59.33, lon: 18.07, az: 180, id: 0 }, ok = r => r.slots.every((s, i) => i === 0 || s.t > r.slots[i - 1].t);
+  const spring = facadeDay({ el: [] }, f, 1.5, 2026, 3, 29, 5, 'Europe/Stockholm'), fall = facadeDay({ el: [] }, f, 1.5, 2026, 10, 25, 5, 'Europe/Stockholm');
+  assert.ok(ok(spring) && ok(fall), 'yaz saati günlerinde dilimler tekrar etmez, sıralı');
+  const first = hmIn(spring.slots[0].t, 'Europe/Stockholm');
+  assert.ok(first.h >= 5 && first.h <= 7, `29 Mart gün doğumu yerel ~06 ${JSON.stringify(first)}`);
+}
+console.log('sağlamlık ok');
+
 // Çeviriler: her dilde İngilizcedeki tüm anahtarlar ve aynı {yer tutucular} olmalı
 {
   Object.defineProperty(globalThis, 'localStorage', { value: { getItem: () => null }, configurable: true });
@@ -142,7 +159,7 @@ console.log('güven ok');
     assert.deepEqual([missing, extra], [[], []], `${l}: eksik/fazla anahtar`);
   }
   // index.html'de kullanılan her anahtar sözlükte olmalı
-  const html = (await import('node:fs')).readFileSync(new URL('./index.html', import.meta.url), 'utf8');
+  const html = (await import('node:fs')).readFileSync(new URL('./index.html', import.meta.url), 'utf8') + (await import('node:fs')).readFileSync(new URL('./app.js', import.meta.url), 'utf8');
   const used = new Set([...html.matchAll(/data-t(?:-title)?="(\w+)"/g), ...html.matchAll(/\btr\('(\w+)'/g), ...html.matchAll(/'(a(?:Off|Asking|Waiting|Nodata|Denied|None)|which(?:Sel|Own)|rel(?:Right|Left)|gps(?:Ellipsoid|Off))'/g)].map(m => m[1]));
   for (const k of used) assert.ok(en.has(k), `index.html'deki '${k}' anahtarı sözlükte yok`);
   // yer tutucular dil başına aynı (metin bloklarını kaba ayrıştırma)

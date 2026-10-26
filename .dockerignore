@@ -1,0 +1,7 @@
+.git
+deploy
+e2e
+docs
+*.png
+test.mjs
+README.md

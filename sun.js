@@ -45,16 +45,17 @@ export function dayEvents(lat, lon, y, m, d) {
 }
 
 // OSM sayı etiketi: "12", "12,5", "12 m", "40'" / "40 ft" (feet -> metre).
-const num = v => { if (v == null) return NaN; const s = String(v).trim().replace(',', '.'), n = parseFloat(s); return /'|ft|feet/.test(s) ? n * 0.3048 : n; };
+// OSM'yi herkes düzenleyebilir: sonlu ve makul olmayan değerler (Infinity, negatif, 1 km+) yok sayılır.
+const num = v => { if (v == null) return NaN; const s = String(v).trim().replace(',', '.').slice(0, 32), n = parseFloat(s), m = /'|ft|feet/.test(s) ? n * 0.3048 : n; return Number.isFinite(m) && m >= 0 && m <= 1000 ? m : NaN; };
 
 // OSM etiketinden bina yüksekliği. guessed: etiket yoksa true (bina türüne göre varsayılan).
 export function height(t) {
   const h = num(t.height);
-  const lv = num(t['building:levels']), levels = isNaN(lv) ? null : lv;
+  const lv = num(t['building:levels']), levels = isNaN(lv) || lv > 300 ? null : lv;
   if (!isNaN(h)) return { h, levels, guessed: false };
   if (levels != null) { const rh = num(t['roof:height']), rl = num(t['roof:levels']); return { h: lv * 3 + (!isNaN(rh) ? rh : !isNaN(rl) ? rl * 2.5 : 1), levels, guessed: false }; }
   const def = { garage: 3, garages: 3, shed: 3, carport: 3, roof: 3, hut: 3, house: 6, detached: 6, semidetached_house: 6, terrace: 6, apartments: 12, residential: 12 };
-  return { h: def[t.building] ?? 9, levels: null, guessed: true };
+  return { h: Object.hasOwn(def, t.building) ? def[t.building] : 9, levels: null, guessed: true }; // hasOwn: "constructor" gibi etiketler prototipe çözülmesin
 }
 
 // Binada olabilecek en üst kat (0 = zemin): kat etiketi varsa ondan, yoksa yükseklikten (~2,8 m/kat).
@@ -98,9 +99,11 @@ export function blocked(buildings, alt, az, eye, skipId = null) {
   return false;
 }
 
+// Yerel metre düzlemi. Boylam farkı ±180°'ye sarılır (antimeridyen); kutba çok yakın kx sıfıra inmesin diye sınırlanır.
 export function frame(lat, lon) {
-  const kx = 111320 * Math.cos(lat * rad), ky = 110574;
-  return { kx, ky, to: (la, lo) => [(lo - lon) * kx, (la - lat) * ky], from: (x, y) => [lat + y / ky, lon + x / kx] };
+  const kx = 111320 * Math.max(0.01, Math.cos(lat * rad)), ky = 110574;
+  return { kx, ky, to: (la, lo) => [((((lo - lon) % 360) + 540) % 360 - 180) * kx, (la - lat) * ky],
+           from: (x, y) => [lat + y / ky, ((lon + x / kx + 540) % 360) - 180] };
 }
 
 // Overpass çıktısı -> halkalar. Çok-poligon (relation) binalardan kapalı dış halkalar alınır.
@@ -243,8 +246,10 @@ export function hmIn(date, tz) {
 export function facadeDay(env, f, eye, y, m, d, step = 5, tz = null) {
   const { buildings, own } = localize(env.el, f.lat, f.lon, env.ground), all = buildings.concat(own);
   const zEye = (env.ground ? env.ground(f.lat, f.lon) : 0) + eye, slots = [];
-  for (let k = 0; k < 1440; k += step) {
-    const t = zoned(y, m, d, k, tz), p = sunpos(f.lat, f.lon, t);
+  // Gerçek anlar üzerinden yerel gece yarısından ertesi gece yarısına: yaz saati günlerinde 23/25 saat doğru sayılır
+  const n = new Date(Date.UTC(y, m - 1, d + 1)), t0 = +zoned(y, m, d, 0, tz), t1 = +zoned(n.getUTCFullYear(), n.getUTCMonth() + 1, n.getUTCDate(), 0, tz);
+  for (let ms = t0; ms < t1; ms += step * 60000) {
+    const t = new Date(ms), p = sunpos(f.lat, f.lon, t);
     if (p.alt <= 0) continue;
     const front = Math.abs(((p.az - f.az + 540) % 360) - 180) < 85;
     slots.push({ t, alt: p.alt, az: p.az, state: !front ? 'behind' : env.hz && p.alt < horizonAlt(env.hz, p.az, zEye) ? 'terrain' : blocked(all, p.alt, p.az, eye, f.id) ? 'block' : 'vis' });

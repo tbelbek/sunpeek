@@ -52,20 +52,20 @@ async () => {
     // 1. İlk açılış: tanıtım kartı, izin açıklaması, Geç
     async intro() {
       const a = await open({ lang: 'tr', intro: false });
-      check('intro: kart açık', !a.$('modal').hidden);
+      check('intro: kart açık', a.$('modal').open);
       const c = a.$('card').innerText;
       check('intro: izin açıklamaları var', /Konum/.test(c) && /Hareket ve yön/.test(c) && /sunucuda/.test(c), c);
       check('intro: iki düğme', a.$('introGo') && a.$('introSkip'));
       a.$('introSkip').click(); await sl(300);
-      check('intro: Geç kartı kapatır', a.$('modal').hidden);
+      check('intro: Adres ara kartı kapatır ve aramaya odaklar', !a.$('modal').open && a.d.activeElement === a.$('coord'));
       check('intro: introSeen kaydedildi', a.win.localStorage.getItem('introSeen') === '1');
       check('intro: pusula düğmesi etiketli', /Pusula/.test(a.$('arrow').getAttribute('aria-label') || ''), a.$('arrow').getAttribute('aria-label'));
       await a.loaded();
       check('intro: Geç sonrası varsayılan konum', a.sp.pt && Math.abs(a.sp.pt.lat - 51.4779) < 1e-3);
       a.$('helpbtn').click(); await sl(200);
-      check('yardım: ℹ️ kartı açar, renkler bölümü', !a.$('modal').hidden && /Renkler/.test(a.$('card').innerText));
-      a.d.dispatchEvent(new a.win.KeyboardEvent('keydown', { key: 'Escape' })); await sl(100);
-      check('yardım: Escape kapatır', a.$('modal').hidden);
+      check('yardım: ℹ️ kartı açar, renkler bölümü', a.$('modal').open && /Renkler/.test(a.$('card').innerText));
+      a.$('introSkip').click(); await sl(100);
+      check('yardım: Kapat kapatır', !a.$('modal').open);
       noErr('intro', a); a.close();
     },
     // 2. Diller: yer tutucu/anahtar sızıntısı yok, mevsim düğmeleri sığıyor
@@ -113,12 +113,13 @@ async () => {
       await until(() => a.$('house').style.display !== 'none', 8000);
       check('dokunma: binaya dokununca cephe seçildi', a.sp.house && a.sp.house.id === b.id, a.sp.house?.id);
       const tiles = [...a.d.querySelectorAll('.tile')].map(t => t.innerText);
-      check('dokunma: 3 sonuç kutucuğu', tiles.length === 3 && tiles.every(t => /\d\.\d/.test(t)), tiles.join(' | '));
+      check('dokunma: 3 sonuç kutucuğu', tiles.length === 3 && tiles.every(t => /\d/.test(t)), tiles.join(' | '));
       check('dokunma: boş ipucu gizlendi', a.$('empty').style.display === 'none');
       // geçmişe kaydedildi ve kutucuktaki yaz değeriyle aynı
       const h = JSON.parse(a.win.localStorage.getItem('gecmis') || '[]');
       check('geçmiş: kayıt oluştu', h.length === 1, h.length);
-      check('geçmiş: yaz saati kutucukla aynı', h[0] && tiles[1].includes(h[0].summerH.toFixed(1)), `${tiles[1]} vs ${h[0]?.summerH}`);
+      const mins = h[0] && Math.round(h[0].summerH * 60);
+      check('geçmiş: yaz saati kutucukla aynı', h[0] && tiles[1].includes(`${Math.floor(mins / 60)} h ${mins % 60} min`), `${tiles[1]} vs ${h[0]?.summerH}`);
       await until(() => JSON.parse(a.win.localStorage.getItem('gecmis'))[0].addr, 15000);
       check('geçmiş: adres geldi (Nominatim)', JSON.parse(a.win.localStorage.getItem('gecmis'))[0].addr, 'adres yok');
       // serbest bırak, sonra duvarın 2 m dışına dokun
@@ -227,7 +228,7 @@ async () => {
       check('güven: açıklama ve OSM linki', /OpenStreetMap/.test(c) && /openstreetmap\.org\/edit#map=19\//.test(link) && /\d+ binadan \d+/.test(c), c.slice(0, 120) + ' ' + link);
       check('güven: link yeni sekmede, noopener', a.$('card').querySelector('a')?.rel.includes('noopener'));
       a.$('confClose').click(); await sl(100);
-      check('güven: kapat', a.$('modal').hidden);
+      check('güven: kapat', !a.$('modal').open);
       // Stockholm'de (yükseklik verisi zengin) uyarı çıkmamalı
       await a.go(59.3150, 18.0700);
       check('güven: Stockholm\'de ❗ yok', a.$('conf').style.display === 'none', a.$('conftxt').textContent);
@@ -245,7 +246,7 @@ async () => {
       a.d.querySelector('[data-del="0"]').click(); await sl(200);
       check('geçmiş: sil', n() === 1 && a.$('hcount').textContent === '1', n());
       await a.go(51.50, -0.12);
-      a.d.querySelector('.hrow').click(); await sl(800);
+      a.d.querySelector('.hgo').click(); await sl(800);
       check('geçmiş: dokun → konuma git', Math.abs(a.sp.pt.lat - 51.478) < 0.01, a.sp.pt.lat);
       noErr('geçmiş', a); a.close();
     },
@@ -320,6 +321,28 @@ async () => {
       const unl = [...a.d.querySelectorAll('button')].filter(b => b.offsetParent && !b.textContent.trim() && !b.getAttribute('aria-label')).map(b => b.id || b.className);
       check('ikon düğmelerinin hepsinde aria-label', !unl.length, unl.join(', '));
       noErr('kontroller', a); a.close();
+    },
+    // 18. Hata regresyonu: pusula açıkken (GPS izleniyor) adres aranınca nokta adreste kalmalı, eski cephe bırakılmalı, ışınlar çizilmeli
+    async searchWhileTracking() {
+      const a = await open({ lang: 'en' });
+      const gps = { coords: { latitude: 51.4779, longitude: -0.0015, accuracy: 8, altitude: null, altitudeAccuracy: null } };
+      a.win.navigator.geolocation.getCurrentPosition = ok => ok(gps);
+      a.win.navigator.geolocation.watchPosition = ok => a.win.setInterval(() => ok(gps), 500);
+      a.win.navigator.geolocation.clearWatch = id => a.win.clearInterval(id);
+      a.$('geo').click(); await a.loaded();
+      a.$('arrow').click(); await sl(600); a.orient(0);
+      const b = a.nearestBuilding(); await a.tapLatLng(...a.toLatLng(b.cx, b.cy)); await until(() => a.sp.house, 5000);
+      a.$('coord').value = 'Trafalgar Square, London'; a.$('go').click();
+      await until(() => a.$('sresults').querySelector('button'), 15000);
+      a.$('sresults').querySelector('button').click(); await sl(4000); await a.loaded(); await sl(600);
+      const rays = Object.values(a.sp.map._layers).filter(l => l instanceof a.win.L.Polyline && !(l instanceof a.win.L.Polygon)).length;
+      check('regresyon: GPS izlenirken arama sonucu ezilmiyor', a.sp.pt.distanceTo([51.508, -0.128]) < 300, a.sp.pt.distanceTo([51.508, -0.128]));
+      check('regresyon: eski cephe bırakıldı', !a.sp.house);
+      check('regresyon: yeni yerde güneş ışınları çizildi', rays > 10, rays);
+      check('regresyon: "Konumuma dön" görünür', !a.$('backbtn').hidden);
+      a.$('backbtn').click(); await sl(1200);
+      check('regresyon: konumuma dön → takip yeniden açık', a.sp.pt.distanceTo([51.4779, -0.0015]) < 1 && a.$('geo').classList.contains('on'));
+      noErr('regresyon', a); a.close();
     },
     // 14. Masaüstü düzeni
     async desktop() {

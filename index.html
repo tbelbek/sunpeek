@@ -8,16 +8,16 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f59e0b' stroke-width='2' stroke-linecap='round'><circle cx='12' cy='12' r='4'/><path d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4'/></svg>">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SunPeek">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js" integrity="sha384-MtIdllebpZyms2pw9K3YJl8BEqrKNQCdSFAySjeglab6z2PkeFdF4Lb9cDsnxQuG" crossorigin="anonymous"></script>
 <style>
   /* Tema: açık / koyu (sistem ayarı). 8 px ızgara, 44 px dokunma alanı, tek yazı ölçeği 12/14/16/22. */
   :root { --bg: #fff; --fg: #1c1d21; --muted: #6b7280; --line: #e5e7eb; --card: #fff; --soft: #f3f4f6; --accent: #f59e0b; --accent-soft: #fef3c7;
-    --blue: #2563eb; --ok: #16a34a; --bad: #dc2626; --hill: #a0522d; --warn-bg: #fff7ed; --warn-fg: #9a3412; --r: 14px;
+    --blue: #2563eb; --link: #1d4ed8; --ok: #16a34a; --bad: #dc2626; --hill: #a0522d; --warn-bg: #fff7ed; --warn-fg: #9a3412; --r: 14px;
     --shadow: 0 1px 2px rgb(0 0 0 / .08), 0 4px 14px rgb(0 0 0 / .10); color-scheme: light; }
   @media (prefers-color-scheme: dark) { :root { --bg: #111318; --fg: #e8eaed; --muted: #9aa0a6; --line: #2a2e36; --card: #1a1d23; --soft: #23272f;
-    --accent-soft: #3d3112; --warn-bg: #3a2410; --warn-fg: #fdba74; --shadow: 0 1px 2px rgb(0 0 0 / .5), 0 4px 14px rgb(0 0 0 / .45); color-scheme: dark; } }
+    --accent-soft: #3d3112; --link: #93c5fd; --warn-bg: #3a2410; --warn-fg: #fdba74; --shadow: 0 1px 2px rgb(0 0 0 / .5), 0 4px 14px rgb(0 0 0 / .45); color-scheme: dark; } }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--fg); background: var(--bg); }
   .ic { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -27,22 +27,23 @@
   .iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; color: var(--fg); flex: none; }
   .iconbtn:active, .btn:active, .fab:active { transform: scale(.96); }
   .muted { color: var(--muted); font-size: 12px; } .st { font-weight: 600; }
+  :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  #sform:focus-within { box-shadow: var(--shadow), 0 0 0 2px var(--link); }
   #map { position: absolute; inset: 0; background: var(--soft); }
   /* Üst: arama + mevsimler + yükseklik uyarısı */
   #top { position: absolute; z-index: 1000; top: calc(8px + env(safe-area-inset-top)); left: 8px; right: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; pointer-events: none; }
   #top > * { pointer-events: auto; }
   #sform { display: flex; align-items: center; gap: 2px; width: 100%; height: 48px; padding: 0 2px 0 14px; background: var(--card); border-radius: 24px; box-shadow: var(--shadow); }
-  #sform > .ic { color: var(--muted); }
   #coord { flex: 1; min-width: 0; height: 44px; border: 0; background: transparent; font-size: 16px; outline: none; padding: 0 6px; }
   #sresults { width: 100%; background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
   #sresults:empty { display: none; }
   #sresults button { display: block; width: 100%; min-height: 44px; padding: 10px 14px; border: 0; border-top: 1px solid var(--line); background: none; text-align: left; }
   #sresults button:first-child { border-top: 0; } #sresults .muted { padding: 10px 14px; display: block; }
   #seasons { display: flex; gap: 2px; max-width: 100%; padding: 4px; background: var(--card); border-radius: 24px; box-shadow: var(--shadow); overflow-x: auto; scrollbar-width: none; }
-  #seasons button { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 10px; border: 0; border-radius: 18px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
+  #seasons button { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 44px; padding: 0 12px; border: 0; border-radius: 22px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
   #seasons button .ic { width: 16px; height: 16px; } #seasons button.on { background: var(--accent-soft); color: var(--fg); }
-  #seasons #play { width: 36px; padding: 0; justify-content: center; color: var(--fg); }
-  #conf { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 0; border-radius: 16px; background: var(--warn-bg); color: var(--warn-fg); font-size: 13px; font-weight: 600; box-shadow: var(--shadow); }
+  #seasons #play { width: 44px; padding: 0; justify-content: center; color: var(--fg); }
+  #conf { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; border: 0; border-radius: 20px; background: var(--warn-bg); color: var(--warn-fg); font-size: 13px; font-weight: 600; box-shadow: var(--shadow); }
   #conf .ic { width: 16px; height: 16px; } #conf.low { background: var(--bad); color: #fff; }
   /* Sağ alt: konum ve pusula düğmeleri */
   #fabs { position: absolute; z-index: 1000; right: 12px; bottom: 24px; display: flex; flex-direction: column; gap: 10px; }
@@ -58,30 +59,34 @@
     background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); }
   #sheet > summary { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 10px; min-height: 56px; padding-top: 6px; background: var(--card); list-style: none; cursor: pointer; font-size: 16px; font-weight: 700; }
   #sheet > summary::-webkit-details-marker, details > summary::-webkit-details-marker { display: none; }
-  #sheet > summary .chev { margin-left: auto; color: var(--muted); transition: transform .2s; } #sheet:not([open]) > summary .chev { transform: rotate(180deg); }
+  #sheet > summary .chev { color: var(--muted); transition: transform .2s; } #expandbtn { margin-left: auto; color: var(--muted); }
+  body.expanded #expandbtn svg { transform: rotate(180deg); } @media (min-width: 701px) { #expandbtn { display: none; } #sheet > summary .chev { margin-left: auto; } } #sheet:not([open]) > summary .chev { transform: rotate(180deg); }
   .handle { position: absolute; left: 50%; top: 6px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--line); }
   .dot { width: 10px; height: 10px; border-radius: 5px; flex: none; background: var(--muted); }
   .dot.vis { background: var(--ok); } .dot.block { background: var(--bad); } .dot.terrain { background: var(--hill); } .dot.behind, .dot.night { background: #9ca3af; }
   #sum { flex: 1; min-width: 0; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hint { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border-radius: 12px; background: var(--soft); color: var(--fg); }
   .hint .ic { color: var(--blue); margin-top: 1px; }
-  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .tile { padding: 10px 6px; border-radius: 12px; background: var(--soft); text-align: center; }
-  .tile:first-child { background: var(--accent-soft); }
-  .tile b { display: block; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; } .tile span { font-size: 12px; color: var(--muted); }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); border-radius: 12px; background: var(--soft); }
+  .tile { padding: 12px 6px; text-align: center; border-left: 1px solid var(--line); } .tile:first-child { border-left: 0; }
+  .tile b { display: block; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; } .tile:first-child b { color: #b45309; }
+  .tile span { font-size: 12px; color: var(--muted); }
+  @media (prefers-color-scheme: dark) { .tile:first-child b { color: var(--accent); } }
+  .estrow { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin-bottom: 8px; padding: 8px 12px; border: 0; border-radius: 12px; background: var(--warn-bg); color: var(--warn-fg); font-size: 13px; font-weight: 600; text-align: left; }
+  .estrow .ic { width: 18px; height: 18px; } .estrow u { margin-left: auto; white-space: nowrap; }
   .wins { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin-top: 10px; font-size: 13px; } .wins span:nth-child(odd) { color: var(--muted); }
   .facrow { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 8px 0 8px 12px; border-radius: 12px; background: var(--soft); }
-  .facrow > div { flex: 1; min-width: 0; } .facrow .ic { color: #06b6d4; }
+  .facrow > div { flex: 1; min-width: 0; } .facrow > .ic { color: #06b6d4; }
   .field { display: flex; align-items: center; gap: 8px; min-height: 52px; border-bottom: 1px solid var(--line); }
   .field > label { flex: 1; min-width: 0; color: var(--muted); }
   .field input[type=date] { height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
   .stepper { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-  .stepper .iconbtn { width: 40px; height: 40px; border-radius: 0; }
-  #kat { width: 40px; height: 40px; border: 0; background: transparent; text-align: center; font-weight: 700; -moz-appearance: textfield; }
+  .stepper .iconbtn { width: 44px; height: 44px; border-radius: 0; }
+  #kat { width: 40px; height: 44px; border: 0; background: transparent; text-align: center; font-weight: 700; -moz-appearance: textfield; }
   #kat::-webkit-inner-spin-button, #kat::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   #time { width: 100%; margin: 4px 0 0; accent-color: var(--accent); }
   #now { display: flex; align-items: center; gap: 8px; min-height: 36px; }
-  .fix { display: flex; gap: 8px; align-items: flex-start; margin-top: 8px; padding: 10px 12px; border-radius: 12px; background: var(--warn-bg); color: var(--warn-fg); font-weight: 600; cursor: pointer; }
+  .fix { display: flex; gap: 8px; align-items: flex-start; width: 100%; margin-top: 8px; padding: 10px 12px; border: 0; border-radius: 12px; background: var(--warn-bg); color: var(--warn-fg); font-weight: 600; text-align: left; cursor: pointer; }
   #katwarn { color: var(--bad); }
   #gstat:empty, #pos:empty, #rel:empty { display: none; }
   #gstat { margin-top: 8px; font-size: 13px; color: var(--muted); } #gstat .btn { height: 36px; margin-top: 6px; }
@@ -94,28 +99,28 @@
   #lang { height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
   table { width: 100%; border-collapse: collapse; margin-top: 8px; } td { padding: 6px 0; border-top: 1px solid var(--line); } td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
   .leg { display: inline-block; width: 18px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
-  .hrow { display: flex; gap: 8px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); cursor: pointer; } .hrow > div { flex: 1; min-width: 0; }
+  .hrow { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); } .hgo { flex: 1; min-width: 0; padding: 4px 0; border: 0; background: none; text-align: left; }
   .lbl { color: #fff; font: 600 12px system-ui, sans-serif; text-shadow: 0 0 3px #000, 0 0 3px #000; white-space: nowrap; }
   /* Kart (tanıtım, yardım, uyarı) */
-  #modal { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgb(0 0 0 / .5); }
-  #modal[hidden] { display: none; }
-  #card { width: 100%; max-width: 440px; max-height: 90vh; overflow: auto; padding: 20px; border-radius: 18px; background: var(--card); box-shadow: var(--shadow); line-height: 1.5; }
+  #modal { width: min(440px, calc(100vw - 32px)); max-height: 90vh; padding: 0; border: 0; border-radius: 18px; background: var(--card); color: var(--fg); box-shadow: var(--shadow); }
+  #modal::backdrop { background: rgb(0 0 0 / .5); }
+  #card { padding: 20px; line-height: 1.5; }
   #card h2 { margin: 0 0 8px; font-size: 20px; } #card h3 { margin: 16px 0 6px; font-size: 15px; } #card p { margin: 6px 0; }
   #card .perm { display: flex; gap: 10px; align-items: flex-start; } #card .perm .ic { color: var(--blue); margin-top: 2px; }
   #card .actions { display: flex; gap: 8px; margin-top: 18px; } #card .actions .btn { flex: 1; }
-  #card a { color: var(--blue); }
+  #card a { color: var(--link); }
   .leaflet-control-attribution { background: var(--card) !important; color: var(--muted) !important; } .leaflet-control-attribution a { color: var(--blue) !important; }
   .leaflet-bar a { background: var(--card) !important; color: var(--fg) !important; border-color: var(--line) !important; }
   @media (max-width: 700px) {
     #map { bottom: 44%; } body.closed #map { bottom: 64px; }
     #panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; height: 44%; max-height: none; border-radius: 18px 18px 0 0; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
-    body.closed #panel { height: auto; }
+    body.closed #panel { height: auto; } body.expanded #panel { height: 85%; } body.expanded #map { bottom: 85%; } body.closed #expandbtn { display: none; }
     #fabs { bottom: calc(44% + 12px); } body.closed #fabs { bottom: 76px; }
     #backbtn { bottom: calc(44% + 12px); } body.closed #backbtn { bottom: 76px; }
     .leaflet-control-zoom { display: none; }
     #sky { width: 160px; height: 160px; }
     /* telefonda yalnız seçili mevsim yazıyla, diğerleri simge (etiket aria-label'da) */
-    #seasons button:not(.on) span { display: none; } #seasons button:not(.on) { width: 40px; padding: 0; justify-content: center; }
+    #seasons button.ico:not(.on) span { display: none; } #seasons button.ico:not(.on) { width: 44px; padding: 0; justify-content: center; } #seasons button { padding: 0 8px; font-size: 12px; } #seasons { gap: 0; }
   }
   @media (min-width: 701px) { #top { right: auto; width: 360px; } }
 </style>
@@ -154,10 +159,10 @@
 </svg>
 <div id="map"></div>
 <div id="top">
-  <form id="sform" role="search"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg><input id="coord" type="search" enterkeyhint="search" autocomplete="off" data-t-ph="searchPh"><button id="go" class="iconbtn" type="submit" data-t-aria="search"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></button><button id="helpbtn" class="iconbtn" type="button" data-t-aria="helpTitle"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg></button></form>
+  <form id="sform" role="search"><input id="coord" type="search" enterkeyhint="search" autocomplete="off" data-t-ph="searchPh" data-t-aria="searchPh"><button id="go" class="iconbtn" type="submit" data-t-aria="search"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></button><button id="helpbtn" class="iconbtn" type="button" data-t-aria="helpTitle"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg></button></form>
   <div id="sresults"></div>
   <div id="seasons">
-    <button data-s="today" data-t-aria="today"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg><span data-t="today"></span></button><button data-s="spring" data-t-aria="spring"><svg class="ic" aria-hidden="true"><use href="#i-sprout"/></svg><span data-t="spring"></span></button><button data-s="summer" data-t-aria="summer"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg><span data-t="summer"></span></button><button data-s="autumn" data-t-aria="autumn"><svg class="ic" aria-hidden="true"><use href="#i-leaf"/></svg><span data-t="autumn"></span></button><button data-s="winter" data-t-aria="winter"><svg class="ic" aria-hidden="true"><use href="#i-snowflake"/></svg><span data-t="winter"></span></button><button id="play" data-t-aria="playTitle"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
+    <button data-s="today" class="ico" data-t-aria="today"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg><span data-t="today"></span></button><button data-s="spring" class="ico" data-t-aria="spring"><svg class="ic" aria-hidden="true"><use href="#i-sprout"/></svg><span data-t="spring"></span></button><button data-s="summer" data-t-aria="summer"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg><span data-t="summer"></span></button><button data-s="autumn" class="ico" data-t-aria="autumn"><svg class="ic" aria-hidden="true"><use href="#i-leaf"/></svg><span data-t="autumn"></span></button><button data-s="winter" data-t-aria="winter"><svg class="ic" aria-hidden="true"><use href="#i-snowflake"/></svg><span data-t="winter"></span></button><button id="play" data-t-aria="playTitle"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
   </div>
   <button id="conf" style="display:none" aria-haspopup="dialog"><svg class="ic" aria-hidden="true"><use href="#i-triangle-alert"/></svg><span id="conftxt"></span></button>
 </div>
@@ -166,16 +171,16 @@
   <button id="arrow" class="fab" data-t-aria="arrowTitle"><b><svg class="ic" aria-hidden="true"><use href="#i-compass"/></svg></b><span id="arrowtxt"></span></button>
 </div>
 <button id="backbtn" class="btn" hidden><svg class="ic" aria-hidden="true"><use href="#i-locate-fixed"/></svg><span data-t="backLoc"></span></button>
-<div id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="cardtitle"><div id="card"></div></div>
-<div id="panel"><details id="sheet" open><summary><span class="handle"></span><span id="sumdot" class="dot"></span><span id="sum">SunPeek</span><svg class="ic chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+<dialog id="modal" aria-labelledby="cardtitle"><div id="card"></div></dialog>
+<div id="panel"><details id="sheet" open><summary><span class="handle"></span><span id="sumdot" class="dot"></span><span id="sum">SunPeek</span><button id="expandbtn" class="iconbtn" type="button" data-t-aria="expand"><svg class="ic" aria-hidden="true"><use href="#i-chevron-up"/></svg></button><svg class="ic chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
   <div id="empty" class="hint"><svg class="ic" aria-hidden="true"><use href="#i-house"/></svg><span data-t="emptyHint"></span></div>
   <div id="house" style="display:none"></div>
-  <div class="field"><label for="date" data-t="date"></label><input id="date" type="date"></div>
   <div class="field"><label for="kat"><span data-t="floorLabel"></span> <span id="eyeM" class="muted"></span></label>
     <span id="katwarn" style="display:none"><svg class="ic" aria-hidden="true"><use href="#i-triangle-alert"/></svg></span>
     <div class="stepper"><button id="katminus" class="iconbtn" type="button" aria-label="−"><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg></button><input id="kat" type="number" value="0" min="0" step="1" inputmode="numeric"><button id="katplus" class="iconbtn" type="button" aria-label="+"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button></div>
     <button id="gpskat" class="iconbtn" type="button" data-t-aria="gpsFloorTitle"><svg class="ic" aria-hidden="true"><use href="#i-satellite-dish"/></svg></button></div>
-  <div id="katmsg" class="fix" style="display:none"></div>
+  <button id="katmsg" class="fix" type="button" style="display:none"></button>
+  <div class="field"><label for="date" data-t="date"></label><input id="date" type="date"></div>
   <div class="field" style="flex-wrap:wrap;border-bottom:0;padding-top:6px"><label for="time" data-t="time"></label><span id="tval" class="st"></span><input id="time" type="range" min="0" max="1439" step="5"></div>
   <div id="now"></div>
   <button id="look" class="btn" hidden><svg class="ic" aria-hidden="true"><use href="#i-locate"/></svg><span data-t="look"></span></button>
@@ -195,585 +200,6 @@
     <div id="bstat" class="muted" style="margin-top:8px"></div>
   </details>
 </details></div>
-<script type="module">
-import { t as tr, lang, LANGS, dirs, applyStatic } from './i18n.js';
-import { zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip } from './sun.js';
-
-const $ = id => document.getElementById(id);
-const icon = (n, c = 'ic') => `<svg class="${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
-const map = L.map('map', { rotate: true, touchRotate: false, rotateControl: false, bearing: 0, zoomControl: false }).setView([51.4779, -0.0015], 17);
-L.control.zoom({ position: 'topright' }).addTo(map); // telefonda gizli (iki parmak); sol üst arama, sağ alt düğmeler
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-  maxZoom: 20, maxNativeZoom: 19, attribution: 'Esri World Imagery · buildings © OpenStreetMap'
-}).addTo(map);
-const bLayer = L.layerGroup().addTo(map), rLayer = L.layerGroup().addTo(map);
-const marker = L.marker([51.4779, -0.0015], { draggable: true }).addTo(map);
-const cone = L.polygon([], { color: '#4af', weight: 1, fillOpacity: 0.25, interactive: false }).addTo(map);
-let acc = null, pt = null, accM = null, gAlt = null, gAltAcc = null, B = { buildings: [], own: [] }, req = 0;
-let last = null; // son çekim: {el, ground, hz, lat, lng} — binalar + zemin kotu + ufuk
-let cmpState = 'off'; // off | asking | waiting | nodata | denied | none — üstteki okta görünür
-let raw = null, heading = null, headAcc = null, compassOn = false, watchId = null, house = null, lastRender = 0, wake = null, gpsPt = null;
-let katSrc = null, katFix = null; // katSrc 'gps': kat GPS'ten geldi; katFix: önerilen düzeltme
-let cmpOff = +(localStorage.getItem('cmpOff') || 0); // pusula düzeltmesi (manyetik sapma + cihaz hatası), duvara göre kalibre edilir
-
-let TZ = null; // konumun saat dilimi (Open-Meteo); gelene kadar tarayıcınınki
-const hm = t => t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', timeZone: TZ ?? undefined });
-const pad = n => String(n).padStart(2, '0');
-const dirName = a => dirs[Math.round(a / 45) % 8];
-const dm = md => new Date(2000, +md.slice(0, 2) - 1, +md.slice(3)).toLocaleDateString(lang, { day: 'numeric', month: 'short' });
-// Mevsim tarihleri yarımküreye göre: güneyde Haziran kıştır
-const SEASON = lat => lat < 0 ? { spring: '09-23', summer: '12-21', autumn: '03-20', winter: '06-21' } : { spring: '03-20', summer: '06-21', autumn: '09-23', winter: '12-21' };
-applyStatic();
-for (const [k, v] of Object.entries(LANGS)) $('lang').add(new Option(v, k, false, k === lang));
-$('lang').onchange = () => { localStorage.setItem('lang', $('lang').value); location.reload(); };
-const today = new Date();
-$('date').value = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
-$('time').value = today.getHours() * 60 + today.getMinutes();
-const todayStr = $('date').value;
-const ymd = () => $('date').value.split('-').map(Number);
-const timeAt = min => { const [y, m, d] = ymd(); return zoned(y, m, d, min, TZ); };
-const kat = () => Math.max(0, Math.round(parseFloat($('kat').value) || 0));
-const eye = () => 1.5 + kat() * 2.8; // göz/pencere zeminden ~1,5 m, kat yüksekliği ~2,8 m
-const z0 = () => last?.ground ? last.ground(pt.lat, pt.lng) : null; // gözlemcinin zemin kotu (DEM)
-
-// Bir noktadan az yönünde, ekranda ~px piksel uzunluğunda (metreye çevrilmiş) uç nokta. Harita dönse de doğru kalır.
-function dest(from, az, px) {
-  const m = px * 40075016.686 * Math.cos(from.lat * Math.PI / 180) / 2 ** (map.getZoom() + 8), F = frame(from.lat, from.lng);
-  return F.from(Math.sin(az * Math.PI / 180) * m, Math.cos(az * Math.PI / 180) * m);
-}
-function ray(from, az, px, style) { const end = dest(from, az, px); L.polyline([from, end], style).addTo(rLayer); return end; }
-function label(at, text) { L.marker(at, { icon: L.divIcon({ className: 'lbl', html: text, iconSize: null }), interactive: false }).addTo(rLayer); }
-const COL = { vis: '#1ad940', block: '#f7332a', terrain: '#a0522d', behind: '#dddddd' };
-
-// ---------- çizim ----------
-function draw() {
-  if (!pt) return;
-  rLayer.clearLayers();
-  const [y, m, d] = ymd(), ev = dayEvents(pt.lat, pt.lng, y, m, d);
-  const origin = house ? L.latLng(house.lat, house.lon) : pt;
-
-  if (house) { // cephe modu: ışınlar cepheden çıkar
-    house.day = facadeCached($('date').value, () => facadeDay(house.env, house, eye(), y, m, d, 5, TZ));
-    for (const s of house.day.slots) { const lt = hmIn(s.t, TZ); if (lt.m % 30) continue;
-      const full = lt.m === 0, end = ray(origin, s.az, full ? 150 : 120, { color: COL[s.state], weight: full ? 3 : 2, opacity: s.state === 'behind' ? 0.5 : 0.85 });
-      if (full) label(end, lt.h);
-    }
-  } else {
-    const state = obsState;
-    const t0 = ev.sunrise ?? (ev.polar === 'day' ? timeAt(0) : null), t1 = ev.sunset ?? (ev.polar === 'day' ? timeAt(1440) : null);
-    if (t0 && t1) for (let t = new Date(Math.ceil(t0 / 1800000) * 1800000); t <= t1; t = new Date(+t + 1800000)) {
-      const p = sunpos(pt.lat, pt.lng, t);
-      if (p.alt <= 0) continue;
-      const lt = hmIn(t, TZ), full = lt.m === 0;
-      const end = ray(pt, p.az, full ? 150 : 120, { color: COL[state(p.alt, p.az)], weight: full ? 3 : 2, opacity: full ? 0.9 : 0.6 });
-      if (full) label(end, lt.h);
-    }
-  }
-  for (const [t, sym] of [[ev.sunrise, '↑'], [ev.sunset, '↓']]) if (t)
-    label(ray(origin, sunpos(pt.lat, pt.lng, t).az, 190, { color: '#ff9900', weight: 3, dashArray: '6 6' }), sym + hm(t));
-
-  // Seçili saat
-  const t = timeAt(+$('time').value), p = sunpos(origin.lat, origin.lng, t);
-  $('tval').textContent = hm(t);
-  $('altaz').textContent = `${p.alt.toFixed(1)}° · ${p.az.toFixed(0)}° ${dirName(p.az)}`;
-  if (p.alt > 0) ray(origin, p.az, 230, { color: '#ffe600', weight: 5 });
-  let st, cls;
-  if (p.alt <= 0) { st = tr('belowHorizon'); cls = 'night'; }
-  else if (house) {
-    const s = house.day.slots.find(s => Math.abs(s.t - t) <= 150000)?.state ?? 'behind'; // 5 dk'lık dilim
-    cls = s; st = tr({ vis: 'fVis', block: 'fBlock', terrain: 'fTerrain', behind: 'fBehind' }[s]);
-  } else { cls = obsState(p.alt, p.az); st = tr({ vis: 'oVis', block: 'oBlock', terrain: 'oTerrain' }[cls]); }
-  $('now').innerHTML = `<span class="dot ${cls}"></span><span>${st}</span>`;
-  $('sumdot').className = 'dot ' + cls;
-  $('sum').textContent = st + (house ? ` · ${$('date').value === todayStr ? tr('todayLower') : dm(`${pad(m)}-${pad(d)}`)} ${tr('hours', { h: house.day.visH.toFixed(1) })}` : '');
-  $('eyeM').textContent = `≈ ${eye().toFixed(1)} m`;
-  checkKat();
-
-  const polar = { day: tr('polarDay'), night: tr('polarNight') }[ev.polar];
-  $('riseset').textContent = ev.sunrise && ev.sunset ? `${hm(ev.sunrise)} / ${hm(ev.sunset)}` : polar ?? '—';
-  $('noon').textContent = ev.noon ? `${hm(ev.noon)} · ${ev.maxAlt.toFixed(1)}°` : '—';
-  const len = ev.sunrise && ev.sunset ? (ev.sunset - ev.sunrise) / 60000 : ev.polar === 'day' ? 1440 : ev.polar ? 0 : null;
-  $('len').textContent = len == null ? '—' : tr('dayLenFmt', { h: Math.floor(len / 60), m: Math.round(len % 60) });
-  drawHouse(); drawHeading(); drawConf();
-}
-
-// Kat, binanın kat sayısıyla uyuşuyor mu? Cephe seçiliyse o bina, değilse içinde durduğun bina (en yüksek parça).
-// Uymuyorsa kat alanının yanında ❗ ve dokununca uygulanan öneri.
-function checkKat() {
-  const own = B.own.reduce((a, b) => !a || b.h > a.h ? b : a, null), b = house ?? own, k = kat(), gps = katSrc === 'gps';
-  let msg = ''; katFix = null;
-  if (b) {
-    const mx = maxFloor(b);
-    if (k > mx) {
-      katFix = mx;
-      msg = tr('kTooHigh', { k, which: tr(house ? 'whichSel' : 'whichOwn'), n: mx + 1, est: b.levels == null ? tr('estFromHeight') : '', mx }) +
-        (gps ? tr(k - mx >= 8 ? 'gpsEllipsoid' : 'gpsOff') : '');
-    }
-  } else if (gps && k > 0) {
-    katFix = 0; msg = tr('notInside', { k });
-  }
-  $('katwarn').style.display = $('katmsg').style.display = msg ? '' : 'none';
-  $('katmsg').innerHTML = msg ? `${icon('triangle-alert')}<span>${esc(msg)}</span>` : '';
-}
-
-// Gözlemcinin bulunduğu nokta için güneş durumu: tepe (ufuk) ya da bina kesiyor mu?
-function obsState(alt, az) {
-  if (last?.hz && z0() != null && alt < horizonAlt(last.hz, az, z0() + eye())) return 'terrain';
-  return blocked(B.buildings, alt, az, eye()) ? 'block' : 'vis';
-}
-// Cephe hesabı ağır (3 gün × 288 dilim): tarih+kat değişmedikçe yeniden hesaplama
-function facadeCached(key, fn) { key += '|' + kat() + '|' + TZ; return (house.cache[key] ??= fn()); }
-
-function drawHouse() {
-  const el = $('house');
-  $('empty').style.display = house ? 'none' : '';
-  if (!house) { el.style.display = 'none'; return; }
-  const [y] = ymd(), fmt = r => r.windows.map(([a, b]) => `${hm(a)}–${hm(b)}`).join(', ') || tr('none');
-  const S = SEASON(house.lat), on = md => { const [mm, dd] = md.split('-').map(Number); return facadeCached(`${y}-${md}`, () => facadeDay(house.env, house, eye(), y, mm, dd, 5, TZ)); };
-  const sum = on(S.summer), win = on(S.winter);
-  el.style.display = '';
-  saveHist({ day: house.day, sum, win, fmt });
-  // Önce cevap: üç büyük kutucuk (seçili gün / yaz / kış), altında saat aralıkları
-  const [, mo, da] = ymd(), dayLbl = $('date').value === todayStr ? tr('today') : dm(`${pad(mo)}-${pad(da)}`);
-  const tile = (lbl, r) => `<div class="tile"><b>${tr('hours', { h: r.visH.toFixed(1) })}</b><span>${lbl}</span></div>`;
-  el.innerHTML = `<div class="tiles">${tile(dayLbl, house.day)}${tile(tr('summerSol', { d: dm(S.summer) }), sum)}${tile(tr('winterSol', { d: dm(S.winter) }), win)}</div>
-    <div class="wins"><span>${dayLbl}</span><span>${fmt(house.day)}</span><span>${tr('summer')}</span><span>${fmt(sum)}</span><span>${tr('winter')}</span><span>${fmt(win)}</span></div>
-    <div class="facrow">${icon('house')}<div><div class="st">${tr('facadeHdr', { az: house.az.toFixed(0), dir: dirName(house.az) })}</div>
-      <div class="muted">${tr('facadeSub', { h: house.h.toFixed(0), est: house.guessed ? tr('estimated') : '', k: kat(), e: eye().toFixed(1) })}</div></div>
-      <button id="unpick" class="iconbtn" aria-label="${tr('unpick')}" title="${tr('unpick')}">${icon('x')}</button></div>
-    ${compassOn ? `<button id="calib" class="btn" style="width:100%;margin-top:8px">${icon('ruler')}${tr('calib')}</button><div class="muted" style="margin-top:4px">${tr('calibHelp', { c: (cmpOff >= 0 ? '+' : '') + cmpOff.toFixed(0) })}</div>` : ''}`;
-  $('unpick').onclick = () => { house = null; drawBuildings(); draw(); };
-  if ($('calib')) $('calib').onclick = () => { // duvara bakan telefonun gerçek yönü = cephe yönü + 180°
-    if (raw == null) return;
-    cmpOff = ((house.az + 180 - raw + 540) % 360) - 180; localStorage.setItem('cmpOff', cmpOff); heading = null;
-    $('gstat').textContent = tr('calibSaved', { c: cmpOff.toFixed(0) }); drawHouse();
-  };
-}
-
-// ---------- geçmiş (tarama yapılan binalar) ----------
-// Telefonda saklanır (localStorage). iOS Safari 7 gün girilmeyen sitenin verisini silebilir: kalıcılık istenir;
-// ana ekrana eklenen site bundan muaf.
-navigator.storage?.persist?.().catch(() => {});
-const HKEY = 'gecmis', HMAX = 200;
-const hist = () => { try { return JSON.parse(localStorage.getItem(HKEY) || '[]'); } catch { return []; } };
-const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-function putHist(list) { localStorage.setItem(HKEY, JSON.stringify(list.slice(0, HMAX))); renderHist(); }
-// Seçili cephenin son sonuçlarını yaz; aynı bina+cephe varsa günceller ve başa alır.
-function saveHist({ day, sum, win, fmt }) {
-  const key = `${house.id}:${Math.round(house.az)}`, list = hist(), old = list.find(e => e.key === key);
-  if (old && old.kat === kat() && old.date === $('date').value && old.todayH === day.visH && list[0] === old) return; // değişiklik yok (saat kaydırıcısı)
-  const e = { key, lat: house.lat, lon: house.lon, az: house.az, h: house.h, guessed: house.guessed, kat: kat(), date: $('date').value,
-    todayH: day.visH, today: fmt(day), summerH: sum.visH, summer: fmt(sum), winterH: win.visH, winter: fmt(win), addr: old?.addr ?? null, savedAt: new Date().toISOString() };
-  putHist([e, ...list.filter(x => x.key !== key)]);
-  if (!e.addr) lookupAddr(e);
-}
-// Nominatim: kayıt başına tek istek (kullanım politikası ≤1/sn, toplu sorgu yok)
-async function lookupAddr(e, retried = false) {
-  try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=${lang}&lat=${e.lat}&lon=${e.lon}`, { signal: AbortSignal.timeout(10000) });
-    const a = (await r.json()).address ?? {};
-    const addr = [[a.road, a.house_number].filter(Boolean).join(' '), a.city ?? a.town ?? a.village ?? a.suburb].filter(Boolean).join(', ');
-    if (addr) putHist(hist().map(x => x.key === e.key ? { ...x, addr } : x));
-  } catch { if (!retried) setTimeout(() => lookupAddr(e, true), 5000); } // yanıt yoksa bir kez daha dene
-}
-function renderHist() {
-  const list = hist();
-  $('hcount').textContent = list.length;
-  $('hist').innerHTML = list.map((e, i) => `<div class="hrow" data-i="${i}"><div><b>${esc(e.addr ?? `${e.lat.toFixed(5)}, ${e.lon.toFixed(5)}`)}</b>
-      <div class="muted">${tr('histFacade', { dir: dirName(e.az), az: Math.round(e.az), k: e.kat, h: Math.round(e.h), est: e.guessed ? tr('estimated') : '' })}</div>
-      <div class="muted">${esc(tr('histHours', { date: e.date, t: e.todayH.toFixed(1), s: e.summerH.toFixed(1), sw: e.summer, w: e.winterH.toFixed(1), ww: e.winter }))}</div>
-      <div class="muted">${new Date(e.savedAt).toLocaleString(lang, { dateStyle: 'short', timeStyle: 'short' })}</div></div>
-      <button data-del="${i}" class="iconbtn" aria-label="${tr('del')}" title="${tr('del')}">${icon('trash-2')}</button></div>`).join('') +
-    (list.length ? `<button id="hclear" class="btn" style="width:100%;margin-top:8px">${tr('clearAll')}</button>` : `<div class="muted" style="padding-bottom:8px">${tr('histEmpty')}</div>`);
-  $('hclear')?.addEventListener('click', () => { if (confirm(tr('confirmClear'))) putHist([]); });
-}
-$('hist').onclick = ev => {
-  const del = ev.target.closest('[data-del]'), row = ev.target.closest('.hrow');
-  if (del) { const l = hist(); l.splice(+del.dataset.del, 1); putHist(l); return; }
-  if (!row) return;
-  const e = hist()[+row.dataset.i]; // dokun: oraya git, katı geri yükle; sonuçlar satırda
-  $('kat').value = e.kat; katSrc = null; house = null; drawBuildings();
-  setPoint(e.lat, e.lon); map.setView([e.lat, e.lon], 18);
-};
-renderHist();
-
-// Gökyüzü: merkez tepe noktası, kenar ufuk. Pusula açıkken yukarısı baktığın yön.
-function drawSky() {
-  if (!pt) return;
-  const rot = compassOn && heading != null ? heading : 0, R = 100;
-  const P = (alt, az) => { const r = (90 - Math.max(alt, 0)) / 90 * R, a = (az - rot) * Math.PI / 180; return [r * Math.sin(a), -r * Math.cos(a)]; };
-  const o = house ? { lat: house.lat, lng: house.lon } : pt;
-  let s = `<circle r="${R}" fill="#123" stroke="#999"/><circle r="${R * 2 / 3}" fill="none" stroke="#fff3"/><circle r="${R / 3}" fill="none" stroke="#fff3"/>`;
-  if (house) { // cephe çizgisi; güneşin cepheye vuramadığı yarım gri
-    const a = (house.az - rot) * Math.PI / 180, ux = Math.cos(a) * R, uy = Math.sin(a) * R;
-    s += `<path d="M${-ux},${-uy} A${R},${R} 0 0 0 ${ux},${uy}Z" fill="#9999"/><line x1="${-ux}" y1="${-uy}" x2="${ux}" y2="${uy}" stroke="#0ef" stroke-width="3"/>`;
-  }
-  if (last?.hz && z0() != null) { // tepeler: ufuk profili ile ufuk çemberi arası kahverengi
-    const hp = []; for (let a = 0; a < 360; a += 5) hp.push(P(horizonAlt(last.hz, a, z0() + eye()), a).map(v => v.toFixed(1)).join(','));
-    s += `<path d="M${hp.join('L')}Z M${R},0 A${R},${R} 0 1 0 ${-R},0 A${R},${R} 0 1 0 ${R},0Z" fill-rule="evenodd" fill="#a0522dcc"/>`;
-  }
-  for (const az of [0, 90, 180, 270]) { const [x, y] = P(-8, az).map(v => v * 1.08); s += `<text x="${x}" y="${y + 4}" fill="${az ? '#fff' : '#f55'}" font-size="12" text-anchor="middle" font-weight="700">${dirs[az / 45]}</text>`; }
-  const pts = [], [y, m, d] = ymd();
-  for (let k = 0; k <= 1440; k += 10) {
-    const t = zoned(y, m, d, k, TZ), p = sunpos(o.lat, o.lng, t);
-    if (p.alt > 0) { const [x, yy] = P(p.alt, p.az); pts.push(`${x.toFixed(1)},${yy.toFixed(1)}`); if (k % 120 === 0) s += `<text x="${x}" y="${yy - 4}" fill="#ffd" font-size="9" text-anchor="middle">${k / 60}</text>`; }
-  }
-  if (pts.length) s += `<polyline points="${pts.join(' ')}" fill="none" stroke="#fc0" stroke-width="2"/>`;
-  const p = sunpos(o.lat, o.lng, timeAt(+$('time').value));
-  if (p.alt > 0) { const [x, yy] = P(p.alt, p.az); s += `<circle cx="${x}" cy="${yy}" r="8" fill="#ffe600" stroke="#000"/>`; }
-  if (compassOn && heading != null) s += `<path d="M0,${-R + 1} l-7,-12 h14z" fill="#4af"/>`;
-  $('sky').innerHTML = s;
-
-  // Güneş, baktığın yöne göre şu an nerede?
-  const live = sunpos(o.lat, o.lng, new Date());
-  if (!compassOn || heading == null) $('rel').textContent = '';
-  else if (live.alt <= 0) $('rel').textContent = tr('relBelow');
-  else { const dd = ((live.az - heading + 540) % 360) - 180, d = Math.abs(dd).toFixed(0);
-    $('rel').textContent = tr('relFmt', { where: Math.abs(dd) < 5 ? tr('relFront') : tr(dd > 0 ? 'relRight' : 'relLeft', { d }), alt: live.alt.toFixed(0) }); }
-}
-
-function drawHeading() {
-  const zg = pt && z0();
-  $('pos').textContent = pt ? `${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)}${accM ? ` (±${Math.round(accM)} m)` : ''}` + (TZ ? ` · ${TZ}` : '') +
-    (zg != null ? ' · ' + tr('ground', { z: zg.toFixed(0) }) : '') + (gAlt != null ? ' · ' + tr('gpsAlt', { a: gAlt.toFixed(0) }) + (gAltAcc ? ` ±${Math.round(gAltAcc)}` : '') : '') +
-    (heading != null && headAcc > 0 ? ` · ±${Math.round(headAcc)}°` : '') : '';
-  const live = compassOn && heading != null;
-  if (live && pt) cone.setLatLngs([pt, dest(pt, heading - 15, 90), dest(pt, heading, 100), dest(pt, heading + 15, 90)]); else cone.setLatLngs([]);
-  map.setBearing(live ? -heading : 0); // pusula açık = baktığın yön yukarı, kapalı = kuzey yukarı
-  $('arrowtxt').textContent = live ? `${heading.toFixed(0)}° ${dirName(heading)}` :
-    tr({ off: 'aOff', asking: 'aAsking', waiting: 'aWaiting', nodata: 'aNodata', denied: 'aDenied', none: 'aNone' }[cmpState] ?? 'aOff');
-  drawSky();
-}
-
-function drawBuildings() {
-  bLayer.clearLayers();
-  for (const b of B.buildings.concat(B.own)) if (Math.hypot(b.cx, b.cy) < 200) // telefonda hız: yalnız yakındakiler çizilir
-    L.polygon(b.geom.map(g => [g.lat, g.lon]), { color: '#fff', weight: 1, fill: false, dashArray: b.guessed ? '3 3' : null, interactive: false }).addTo(bLayer);
-  if (house) L.polyline(house.edge, { color: '#00e5ff', weight: 6 }).addTo(bLayer);
-}
-
-// ---------- binalar ----------
-// Tarayıcıda saklanır (yer dolarsa eski bina önbellekleri silinir); aynı bölgeye dönünce anında gelir.
-async function fetchEls(lat, lng) {
-  const key = `ov:${lat},${lng}`, hit = localStorage.getItem(key);
-  if (hit) return JSON.parse(hit);
-  const el = await fetchOverpass(lat, lng), txt = JSON.stringify(el);
-  for (let i = 0; i < 2; i++) try { localStorage.setItem(key, txt); break; }
-    catch { Object.keys(localStorage).filter(k => k.startsWith('ov:')).forEach(k => localStorage.removeItem(k)); }
-  return el;
-}
-async function fetchOverpass(lat, lng) {
-  const a = `around:400,${lat},${lng}`; // kış güneşi alçak: 30 m bina ~340 m'ye gölge düşürür
-  const q = `[out:json][timeout:60];(way(${a})["building"];way(${a})["building:part"];relation(${a})["building"];);out tags geom;`;
-  let err;
-  for (const url of OVERPASS) { // ana sunucu yavaş (30+ sn) ya da 429/502/504 verebilir, sırayla aynalar
-    try {
-      const r = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: q }), signal: AbortSignal.timeout(url === OVERPASS[0] ? 60000 : 30000) });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return (await r.json()).elements;
-    } catch (e) { err = e; }
-  }
-  throw err;
-}
-// Open-Meteo yükseklik API'si (Copernicus GLO-90), 100 noktalık parçalar halinde.
-// Sonuç tarayıcıda saklanır (aynı yere tekrar gelince istek yok); 429'da bekleyip tekrar dener.
-async function fetchElev(pts, key) {
-  const hit = key && localStorage.getItem(key);
-  if (hit) return JSON.parse(hit);
-  const out = [];
-  for (let i = 0; i < pts.length; i += 100) {
-    const c = pts.slice(i, i + 100), url = `https://api.open-meteo.com/v1/elevation?latitude=${c.map(p => p[0].toFixed(5))}&longitude=${c.map(p => p[1].toFixed(5))}`;
-    for (let k = 0; ; k++) {
-      const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
-      if (r.ok) { out.push(...(await r.json()).elevation); break; }
-      if (r.status !== 429 || k === 2) throw new Error('elevation HTTP ' + r.status);
-      await new Promise(res => setTimeout(res, 3000 * (k + 1)));
-    }
-  }
-  if (key) try { localStorage.setItem(key, JSON.stringify(out)); } catch {}
-  return out;
-}
-// Son çekimin merkezinden 120 m içindeysek aynı veriyi yeni noktaya göre yeniden hesapla (yürürken her adımda çekme).
-// Yanıt vermeyen servis: başarısız kısım kaydedilmez (sonraki harekette yeniden denenir), görünür uyarı + ↻ düğmesi,
-// 8 sn sonra bir kez de kendiliğinden yeniden denenir. Başarılı parçalar localStorage'dan gelir, tekrar indirilmez.
-let autoRetry = null;
-async function refreshBuildings(force = false, attempt = 0) {
-  if (!force && last?.complete && pt.distanceTo([last.lat, last.lng]) < 120) { B = localize(last.el, pt.lat, pt.lng, last.ground); statB(); drawBuildings(); return draw(); }
-  clearTimeout(autoRetry);
-  // Çekim merkezi ~100 m'lik ızgaraya oturtulur: önbellek isabeti için; 400 m yarıçap yine de bolca kapsar
-  const id = ++req, lat = +pt.lat.toFixed(3), lng = +pt.lng.toFixed(3);
-  $('bstat').textContent = tr('loading');
-  if ($('retry')) $('gstat').textContent = tr('loading');
-  // Ufuk ~100 m'lik ızgaraya oturtulur: 600 m+ uzaklıkta fark yok, yakın yerlere dönünce önbellekten gelir
-  const hlat = +lat.toFixed(3), hlng = +lng.toFixed(3);
-  const [el, gr, hz] = await Promise.allSettled([fetchEls(lat, lng), fetchElev(gridPoints(lat, lng), `zg:${lat.toFixed(4)},${lng.toFixed(4)}`),
-    fetchElev(horizonPoints(hlat, hlng), `hz:${hlat},${hlng}`)]);
-  if (id !== req) return;
-  last = { el: el.value ?? [], ground: gr.value ? makeGround(lat, lng, gr.value) : null, hz: hz.value ? makeHorizon(hz.value) : null, lat, lng,
-           complete: el.status === 'fulfilled' && !!gr.value && !!hz.value };
-  B = localize(last.el, pt.lat, pt.lng, last.ground); statB();
-  const fails = [];
-  if (el.status === 'rejected') fails.push(tr('bFail', { e: el.reason.message }));
-  if (!last.ground) fails.push(tr('gFail', { e: gr.reason.message }).trim());
-  if (!last.hz) fails.push(tr('hFail', { e: hz.reason.message }).trim());
-  if (fails.length) {
-    $('gstat').innerHTML = `${esc(fails.join(' '))}<br><button id="retry" class="btn">${icon('rotate-ccw')}${tr('retry')}</button>`;
-    $('retry').onclick = () => refreshBuildings(true, 1);
-    if (attempt === 0) autoRetry = setTimeout(() => refreshBuildings(true, 1), 8000);
-  } else if ($('retry')) $('gstat').textContent = '';
-  drawBuildings(); draw();
-}
-function statB() {
-  const g = B.buildings.filter(b => b.guessed).length;
-  $('bstat').textContent = tr('bStat', { n: B.buildings.length, p: Math.round(100 * g / Math.max(1, B.buildings.length)) }) +
-    (B.own.length ? tr('bOwn') : '.') + (last?.ground ? tr('slopeOn') : '') + (last?.hz ? tr('hillsOn') : '');
-}
-
-// ---------- ev seçimi ----------
-function setHouse(e) {
-  if (!e) { $('gstat').textContent = tr('noEdge'); return; }
-  const F = frame(pt.lat, pt.lng), [lat, lon] = F.from(e.x, e.y), r = e.b.ring;
-  house = { lat, lon, az: e.az, id: e.b.id, h: e.b.h, levels: e.b.levels, guessed: e.b.guessed, env: last, cache: {}, edge: [F.from(...r[e.i]), F.from(...r[(e.i + 1) % r.length])] };
-  $('gstat').textContent = tr('facadePicked');
-  drawBuildings(); draw();
-}
-$('look').onclick = () => {
-  if (heading == null || !last) return;
-  setHouse(rayEdge(B.buildings, heading)); // pusula ±15° şaşabilir: sonuç vurgulanır, gerekirse dokunarak düzeltilir
-};
-
-// ---------- konum ----------
-function setPoint(lat, lng, pan = true) {
-  pt = L.latLng(lat, lng);
-  marker.setLatLng(pt);
-  if (pan) map.setView(pt, Math.max(map.getZoom(), 17));
-  draw(); refreshBuildings(); fetchTZ(lat, lng); updateBack();
-}
-// Konumun saat dilimi (Open-Meteo, ~10 km ızgarada önbellekli). Başarısızsa tarayıcının saat dilimi kalır.
-let timeTouched = false;
-async function fetchTZ(lat, lng) {
-  const key = `tz:${lat.toFixed(1)},${lng.toFixed(1)}`;
-  let tz = localStorage.getItem(key);
-  if (!tz) try {
-    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lng.toFixed(3)}&timezone=auto&forecast_days=1&daily=sunrise`, { signal: AbortSignal.timeout(10000) });
-    tz = (await r.json()).timezone; if (tz) localStorage.setItem(key, tz);
-  } catch { return; }
-  if (!tz || tz === TZ) return;
-  try { new Intl.DateTimeFormat('en', { timeZone: tz }); } catch { return; } // tarayıcı tanımıyorsa
-  TZ = tz;
-  if (!timeTouched && $('date').value === todayStr) { const x = hmIn(new Date(), TZ); $('time').value = x.h * 60 + x.m; }
-  draw();
-}
-function gotPos(pos, pan) {
-  const { latitude, longitude, accuracy, altitude, altitudeAccuracy } = pos.coords;
-  accM = accuracy; gAlt = altitude; gAltAcc = altitudeAccuracy;
-  if (acc) acc.remove();
-  acc = L.circle([latitude, longitude], { radius: accuracy, color: '#4af', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(map);
-  $('gstat').textContent = tr('gotPos', { a: Math.round(accuracy) });
-  gpsPt = L.latLng(latitude, longitude);
-  setPoint(latitude, longitude, pan);
-}
-// GPS konumundan >30 m uzaklaşınca "Konumuma dön" görünür; konum düğmesi GPS'teyken mavi
-function updateBack() {
-  const away = !!(gpsPt && pt && pt.distanceTo(gpsPt) > 30);
-  $('backbtn').hidden = !away;
-  $('geo').classList.toggle('on', !!(gpsPt && pt && !away));
-}
-function backToMe() { if (!gpsPt) return locate(); setPoint(gpsPt.lat, gpsPt.lng, false); map.flyTo(gpsPt, Math.max(map.getZoom(), 17), { duration: .6 }); }
-function locate() {
-  if (!navigator.geolocation) { $('gstat').textContent = tr('noGeo'); return; }
-  $('gstat').textContent = tr('askingPos');
-  navigator.geolocation.getCurrentPosition(p => gotPos(p, true), err => {
-    $('gstat').textContent = tr('posFail', { e: err.message });
-    if (!pt) setPoint(51.4779, -0.0015);
-  }, { enableHighAccuracy: true, timeout: 15000 });
-}
-
-// ---------- pusula ----------
-function onOrient(e) {
-  let h = e.webkitCompassHeading; // iOS: kuzeyden saat yönü
-  if (h == null) { if (!(e.absolute || e.type === 'deviceorientationabsolute') || e.alpha == null) return; h = 360 - e.alpha; }
-  h = (h + (screen.orientation?.angle ?? 0) + 360) % 360;
-  headAcc = e.webkitCompassAccuracy ?? null; cmpState = 'live';
-  // Alçak geçiren süzgeç (359→0 sarmasını doğru ele alır); ekranı ~5 Hz güncelle
-  raw = raw == null ? h : (raw + 0.25 * (((h - raw + 540) % 360) - 180) + 360) % 360;
-  heading = (raw + cmpOff + 360) % 360;
-  if (performance.now() - lastRender > 200) { lastRender = performance.now(); drawHeading(); }
-}
-// iOS izni yalnızca bir dokunuşun içinde istenebilir; Android/diğerlerinde izin gerekmez.
-function requestCompass() {
-  if (compassOn || cmpState === 'asking') return;
-  const D = window.DeviceOrientationEvent;
-  if (!D) { cmpState = 'none'; $('gstat').textContent = tr('noCompass'); return drawHeading(); }
-  if (typeof D.requestPermission !== 'function') return compassStart();
-  cmpState = 'asking'; drawHeading();
-  D.requestPermission().then(r => {
-    if (r === 'granted') return compassStart();
-    cmpState = 'denied'; drawHeading();
-    $('gstat').textContent = tr('cmpDenied');
-  }).catch(e => { cmpState = 'off'; drawHeading(); $('gstat').textContent = tr('cmpErr', { e: e.message }); });
-}
-function compassStart() {
-  compassOn = true; cmpState = 'waiting'; $('arrow').classList.add('on'); $('look').hidden = false;
-  navigator.wakeLock?.request('screen').then(w => wake = w).catch(() => {}); // sahada ekran kararmasın
-  drawHouse(); // kalibrasyon düğmesi
-  // İkisini de dinle: Android Chrome 'absolute' verir, iOS ve bazı Android'ler düz 'deviceorientation' (onOrient mutlak olmayanı eler)
-  window.addEventListener('deviceorientationabsolute', onOrient); window.addEventListener('deviceorientation', onOrient);
-  drawHeading();
-  setTimeout(() => { if (compassOn && heading == null) { cmpState = 'nodata'; drawHeading(); $('gstat').textContent = tr('cmpNoData'); } }, 3000);
-  // Yürürken konumu izle ve haritayı takip et
-  if (navigator.geolocation) watchId = navigator.geolocation.watchPosition(p => { gotPos(p, false); map.panTo(pt); }, () => {}, { enableHighAccuracy: true });
-}
-function compassStop() {
-  compassOn = false; cmpState = 'off'; heading = null; raw = null; wake?.release(); wake = null; $('arrow').classList.remove('on'); $('look').hidden = true;
-  window.removeEventListener('deviceorientationabsolute', onOrient); window.removeEventListener('deviceorientation', onOrient);
-  if (watchId != null) navigator.geolocation.clearWatch(watchId); // pil: izlemeyi bırak
-  watchId = null; drawHeading(); drawHouse();
-}
-// Üstteki ok: pusula kapalıysa açar; açıksa yön-yukarı ↔ kuzey-yukarı
-$('arrow').onclick = () => compassOn ? compassStop() : requestCompass();
-document.addEventListener('visibilitychange', () => { if (compassOn && document.visibilityState === 'visible') navigator.wakeLock?.request('screen').then(w => wake = w).catch(() => {}); });
-$('sheet').ontoggle = () => { document.body.classList.toggle('closed', !$('sheet').open); map.invalidateSize(); };
-$('gpskat').onclick = () => {
-  if (gAlt == null) { $('gstat').textContent = tr('noGpsAlt'); return; }
-  if (z0() == null) { $('gstat').textContent = tr('noGround'); return; }
-  const k = Math.max(0, Math.round((gAlt - z0() - 1.5) / 2.8));
-  $('kat').value = k; katSrc = 'gps'; draw();
-  $('gstat').textContent = tr('gpsFloor', { a: gAlt.toFixed(0), acc: gAltAcc ? ` (±${Math.round(gAltAcc)})` : '', z: z0().toFixed(0), k });
-};
-
-// ---------- olaylar ----------
-$('geo').onclick = () => gpsPt && pt && pt.distanceTo(gpsPt) > 30 ? backToMe() : locate();
-$('backbtn').onclick = backToMe;
-// Arama: "lat, lon" doğrudan; değilse adres (Nominatim, yalnız gönderince — politikası tuş başına sorguya izin vermiyor)
-$('sform').onsubmit = async e => {
-  e.preventDefault();
-  const q = $('coord').value.trim(), box = $('sresults');
-  if (!q) return;
-  const m = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/);
-  if (m && Math.abs(+m[1]) <= 90 && Math.abs(+m[2]) <= 180) { box.innerHTML = ''; $('coord').blur(); return setPoint(+m[1], +m[2]); }
-  box.innerHTML = `<span class="muted">${tr('loading')}</span>`;
-  try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=${lang}&q=${encodeURIComponent(q)}`, { signal: AbortSignal.timeout(10000) });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const res = await r.json();
-    box.innerHTML = res.length ? '' : `<span class="muted">${tr('noResults')}</span>`;
-    for (const x of res) {
-      const b = document.createElement('button'); b.type = 'button'; b.textContent = x.display_name;
-      b.onclick = () => { box.innerHTML = ''; $('coord').value = x.display_name; $('coord').blur(); setPoint(+x.lat, +x.lon); };
-      box.appendChild(b);
-    }
-  } catch (err) { box.innerHTML = `<span class="muted">${esc(tr('searchErr', { e: err.message }))}</span>`; }
-};
-$('coord').addEventListener('input', () => { if (!$('coord').value) $('sresults').innerHTML = ''; });
-// Kat: − / + düğmeleri
-for (const [id, d] of [['katminus', -1], ['katplus', 1]]) $(id).onclick = () => { $('kat').value = Math.max(0, kat() + d); katSrc = null; draw(); };
-// Binaya dokun = o binanın en yakın duvarı seçilir; açık alana dokun = kendi konumunu oraya taşı (iğne de sürüklenebilir)
-map.on('click', e => {
-  if (pt && last) {
-    const [x, y] = frame(pt.lat, pt.lng).to(e.latlng.lat, e.latlng.lng), all = B.buildings.concat(B.own), hit = all.filter(b => pip(x, y, b.ring));
-    if (hit.length) { map.panTo(e.latlng); return setHouse(pickEdge(hit, x, y)); }
-    // parmak duvarın biraz dışına düştüyse: ekranda ~14 px içindeki duvar da seçilir
-    const snap = pickEdge(all, x, y, 14 * 40075016.686 * Math.cos(pt.lat * Math.PI / 180) / 2 ** (map.getZoom() + 8));
-    if (snap) { map.panTo(e.latlng); return setHouse(snap); }
-  }
-  setPoint(e.latlng.lat, e.latlng.lng, false);
-  map.panTo(e.latlng); // uzak bir noktaya dokununca harita oraya gidip ortalansın
-});
-marker.on('dragend', () => { const p = marker.getLatLng(); setPoint(p.lat, p.lng, false); });
-map.on('zoomend', draw);
-for (const id of ['date', 'time']) $(id).oninput = () => { if (id === 'time') timeTouched = true; draw(); };
-
-// ---------- mevsim simülasyonu ----------
-// Haritadaki düğmeler: tarihi ekinoks/gündönümüne alır (ışınlar, gölgeler, cephe saatleri o güne göre); ▶ günü oynatır.
-// Mevsim → tarih, bulunulan yarımküreye göre (güneyde "Yaz" = 21 Aralık)
-const seasonDate = k => k === 'today' ? todayStr : $('date').value.slice(0, 5) + SEASON(pt?.lat ?? 1)[k];
-function seasonMark() { for (const b of $('seasons').querySelectorAll('[data-s]')) b.classList.toggle('on', $('date').value === seasonDate(b.dataset.s)); }
-$('seasons').onclick = e => {
-  const b = e.target.closest('[data-s]');
-  if (!b) return;
-  $('date').value = seasonDate(b.dataset.s);
-  seasonMark(); draw();
-};
-let playT = null;
-function stopPlay() { clearInterval(playT); playT = null; $('play').innerHTML = icon('play'); $('play').classList.remove('on'); }
-$('play').onclick = () => {
-  if (playT) return stopPlay();
-  if (!pt) return;
-  const [y, m, d] = ymd(), ev = dayEvents(pt.lat, pt.lng, y, m, d);
-  const mins = t => { const x = hmIn(t, TZ); return x.h * 60 + x.m; };
-  const a = ev.sunrise ? mins(ev.sunrise) : 0, z = ev.sunset ? mins(ev.sunset) : ev.polar === 'night' ? 0 : 1439;
-  if (z <= a) { $('gstat').textContent = tr('noSunrise'); return; }
-  let t = a; $('play').innerHTML = icon('pause'); $('play').classList.add('on');
-  playT = setInterval(() => { // ~6 sn'de doğumdan batıma, 5 dk adım
-    $('time').value = t; draw(); t += 5;
-    if (t > z) stopPlay();
-  }, 6000 / ((z - a) / 5));
-};
-$('date').addEventListener('input', seasonMark);
-seasonMark();
-$('kat').oninput = () => { katSrc = null; draw(); };
-$('katwarn').onclick = $('katmsg').onclick = e => { e.preventDefault(); if (katFix == null) return; $('kat').value = katFix; katSrc = null; draw(); };
-setInterval(drawSky, 60000); // "şu an" göstergesi
-// ---------- tanıtım / yardım kartı, yükseklik güveni ----------
-const legend = [['#1ad940', 'lgVis'], ['#f7332a', 'lgBlock'], ['#a0522d', 'lgTerrain'], ['#ddd', 'lgBehind'], ['#ff9900', 'lgRiseSet'], ['#ffe600', 'lgSel'], ['#4af', 'lgHeading']]
-  .map(([c, k]) => `<span style="white-space:nowrap;margin-right:8px"><span class="leg" style="background:${c}"></span>${tr(k)}</span>`).join(' ');
-function openCard(html) { $('card').innerHTML = html; $('modal').hidden = false; $('card').querySelector('button')?.focus(); }
-function closeCard() { $('modal').hidden = true; }
-$('modal').onclick = e => { if (e.target === $('modal')) closeCard(); };
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal').hidden) closeCard(); });
-// İzinler kullanım anında değil, nedenleri anlatıldıktan sonra tek düğmeyle istenir (iOS izni dokunuşun içinde ister).
-function showIntro(help = false) {
-  openCard(`<h2 id="cardtitle">${help ? tr('helpTitle') : tr('introTitle')}</h2><p>${tr('introLead')}</p>
-    <p>${tr('step1')}<br>${tr('step2')}<br>${tr('step3')}</p>
-    <h3>${tr('permTitle')}</h3><p class="perm">${icon('locate')}<span>${tr('permLoc')}</span></p><p class="perm">${icon('compass')}<span>${tr('permMotion')}</span></p>
-    <p class="muted">${tr('permData')}</p><p class="muted">${tr('permDenied')}</p>
-    ${help ? `<h3>${tr('legendTitle')}</h3><p class="muted">${legend}</p><h3>${tr('aboutTitle')}</h3><p class="muted">${tr('note')}</p>` : ''}
-    <div class="actions"><button class="btn" id="introSkip">${help ? tr('close') : tr('skip')}</button>${compassOn && pt ? '' : `<button class="btn primary" id="introGo">${tr('allowStart')}</button>`}</div>`);
-  $('introGo')?.addEventListener('click', () => { localStorage.setItem('introSeen', 1); requestCompass(); locate(); closeCard(); });
-  $('introSkip').onclick = () => { localStorage.setItem('introSeen', 1); closeCard(); if (!pt) setPoint(51.4779, -0.0015); };
-}
-$('helpbtn').onclick = () => showIntro(true);
-// ❗ Yükseklik güveni: gölge düşürebilecek binaların çoğunun yüksekliği tahminiyse haritada uyar
-let conf = null;
-function drawConf() {
-  conf = null;
-  if (pt && last) {
-    // seçili cepheye / bina listesine bağlı önbellek: kaydırıcı ve oynatma her karede yeniden hesaplatmasın
-    if (house) conf = house.conf ??= (() => {
-      const L0 = localize(house.env.el, house.lat, house.lon, house.env.ground), all = L0.buildings.concat(L0.own);
-      return heightConfidence(all, house.az, all.find(b => b.id === house.id));
-    })();
-    else conf = B.conf ??= heightConfidence(B.buildings, pt.lat >= 0 ? 180 : 0);
-  }
-  const show = conf && conf.level !== 'ok';
-  $('conf').style.display = show ? '' : 'none';
-  if (!show) return;
-  $('conf').classList.toggle('low', conf.level === 'low');
-  $('conftxt').textContent = tr(conf.level === 'low' ? 'confLow' : 'confMid');
-  $('conf').setAttribute('aria-label', tr('confTitle'));
-}
-$('conf').onclick = () => {
-  if (!conf) return;
-  const o = house ? { lat: house.lat, lng: house.lon } : pt;
-  openCard(`<h2 id="cardtitle">${tr('confTitle')}</h2><p>${tr('confBody', { g: conf.guessed, n: conf.n })}</p>
-    ${conf.targetGuessed ? `<p>${tr('confTarget')}</p>` : ''}<p>${tr('confFix')}</p>
-    <p><a href="https://www.openstreetmap.org/edit#map=19/${o.lat.toFixed(5)}/${o.lng.toFixed(5)}" target="_blank" rel="noopener">${tr('confEdit')} ↗</a></p>
-    <div class="actions"><button class="btn" id="confClose">${tr('close')}</button></div>`);
-  $('confClose').onclick = closeCard;
-};
-
-// Açılış: ilk ziyarette tanıtım kartı (izinler oradan istenir). Sonraki ziyaretlerde izin zaten verilmişse doğrudan başla.
-// E2E test kancası (yalnız ?e2e ile): iç duruma salt okunur erişim, e2e/run.js kullanır
-if (new URLSearchParams(location.search).has('e2e')) window.__sp = { map, frame, get pt() { return pt; }, get house() { return house; }, get B() { return B; } };
-drawHeading(); // üstteki ok, konum gelmeden de durumunu göstersin
-if (!localStorage.getItem('introSeen')) showIntro();
-else {
-  navigator.permissions?.query({ name: 'geolocation' }).then(p => p.state === 'granted' ? locate() : setPoint(51.4779, -0.0015)).catch(() => locate()) ?? locate();
-  // izin gerektirmeyen cihazlarda (Android) pusula kendiliğinden açılır; iOS'ta üstteki oka dokunulur
-  if (matchMedia('(pointer: coarse)').matches && window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission !== 'function') requestCompass();
-}
-</script>
+<script type="module" src="./app.js"></script>
 </body>
 </html>

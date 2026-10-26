@@ -1,0 +1,18 @@
+# SunPeek — statik uygulama, root olmayan nginx.
+# 1) derleme: modül adlarına içerik özeti (Cloudflare .js'i saatlerce önbellekler), E2E test kancası üretimden çıkar
+FROM alpine:3.22 AS build
+# E2E=1 yalnız test imajı içindir: test kancası (window.__sp) kalır
+ARG E2E=0
+WORKDIR /w
+COPY index.html app.js sun.js i18n.js ./
+RUN set -eu; \
+    if [ "$E2E" != 1 ]; then sed -i '/window.__sp = /d' app.js; ! grep -q '__sp' app.js; fi; \
+    for f in sun.js i18n.js; do v=$(sha1sum "$f" | cut -c1-10); sed -i "s#'./$f'#'./$f?v=$v'#" app.js; grep -q "$f?v=$v" app.js; done; \
+    v=$(sha1sum app.js | cut -c1-10); sed -i "s#\"./app.js\"#\"./app.js?v=$v\"#" index.html; grep -q "app.js?v=$v" index.html
+
+# 2) çalışma: yetkisiz kullanıcıyla 8080'de nginx
+FROM nginxinc/nginx-unprivileged:1.29-alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /w/ /usr/share/nginx/html/
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1

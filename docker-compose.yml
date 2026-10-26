@@ -1,0 +1,16 @@
+# Sunucuda: docker compose up -d --build
+# Port yayınlanmaz; Cloudflare tüneli aynı Docker ağı üzerinden http://sunpeek:8080'e gelir.
+services:
+  sunpeek:
+    build: .
+    image: sunpeek:local
+    container_name: sunpeek
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [proxy_network]
+networks:
+  proxy_network:
+    external: true

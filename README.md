@@ -27,7 +27,7 @@
 
 ## How it works
 
-Everything runs in the browser. There is no backend and no build step.
+Everything runs in the browser; there is no backend. The app is `index.html` + `app.js` + `sun.js` (math) + `i18n.js` (strings), served as static files.
 
 | What | Source |
 |---|---|
@@ -69,9 +69,20 @@ A facade is blocked by a building when the sun ray enters that building's footpr
 Geolocation and the compass need a secure context, and `localhost` counts as one.
 
 ```sh
-python3 -m http.server 8765
-# open http://localhost:8765
+python3 -m http.server 8765        # quick: plain static server
+# or, exactly as in production:
+docker compose build && docker run --rm -p 127.0.0.1:8080:8080 sunpeek:local
+# open http://localhost:8765 or http://localhost:8080
 ```
+
+## Docker image
+
+- Two-stage build: the first stage content-hashes the module URLs (so CDN caches never serve a stale `app.js`) and strips the test hook. Build with `--build-arg E2E=1` to keep the hook for end-to-end tests.
+- The runtime is `nginxinc/nginx-unprivileged:1.29-alpine` on port 8080, running as a non-root user. `docker-compose.yml` adds a read-only root filesystem, a tmpfs at `/tmp`, `cap_drop: ALL` and `no-new-privileges`. No port is published; put a reverse proxy or tunnel in front of it.
+- `nginx.conf` serves only GET/HEAD and returns 404 for unknown paths. It sets these headers:
+  - a strict Content-Security-Policy: scripts only from self and unpkg with SRI, network only to the data services used;
+  - `frame-ancestors 'self'`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy` and HSTS.
+- Leaflet and leaflet-rotate load from unpkg with Subresource Integrity hashes.
 
 Tests (Node 20+):
 
@@ -81,7 +92,7 @@ node test.mjs
 
 They check the sun position against an independent NOAA implementation and published sunrise/sunset times, the shadow and terrain logic, time zones, height confidence, and that every language has every key and placeholder.
 
-End-to-end tests (`e2e/run.js`, 17 scenarios / ~120 checks) drive the real app in a phone-sized iframe: first-run card, all six languages, tapping walls and open ground (map recentres), address search, back to my location, seasons and day animation (both hemispheres), polar night, compass and calibration, floor stepper and warning, touch-target sizes and aria-labels, the ❗ card, history, offline + retry, language switch and desktop layout. With the local server running, open any page on `http://localhost:8765`, evaluate `e2e/run.js` in the console, then `await E2E.run('tapping')` (names in `E2E.names`). They use live data services, so the first run is slow.
+End-to-end tests (`e2e/run.js`, 18 scenarios / ~125 checks, including a regression test for searching while GPS tracking is on) drive the real app in a phone-sized iframe: first-run card, all six languages, tapping walls and open ground (map recentres), address search, back to my location, seasons and day animation (both hemispheres), polar night, compass and calibration, floor stepper and warning, touch-target sizes and aria-labels, the ❗ card, history, offline + retry, language switch and desktop layout. With the local server (or an `E2E=1` container) running, open any page on that origin, evaluate `e2e/run.js` in the console, then `await E2E.run('tapping')` (names in `E2E.names`). They use live data services, so the first run is slow.
 
 ## Permissions on phones
 
