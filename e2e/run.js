@@ -457,6 +457,11 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
     },
     // İstatistik izni: ilk ziyarette sorulur, iki seçenek eşit, "Hayır"da betik yüklenmez, tercih kalır ve değiştirilebilir
     async consent() {
+      const i = await open({ lang: 'en', consent: true, intro: false }); // ilk ziyaret: tanıtım kartı açıkken izin kutusu gizli
+      const hiddenWithIntro = i.$('modal').open && i.$('consent').hidden;
+      i.d.getElementById('introSkip').click(); await sl(150); // dialog 'close' olayı asenkron
+      check('izin: tanıtım kartı açıkken gizli, kapanınca sorulur', hiddenWithIntro && !i.$('consent').hidden, `${hiddenWithIntro} ${i.$('consent').hidden}`);
+      i.close();
       const a = await open({ lang: 'en', consent: true });
       const beacon = () => !!a.d.querySelector('script[data-cf-beacon]');
       check('izin: ilk ziyarette kutu görünür, betik yok', !a.$('consent').hidden && !beacon());
@@ -470,6 +475,32 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
       b.$('statsbtn').click(); await sl(100);
       check('izin: Daha fazla › istatistik açılınca betik yüklenir', !!b.d.querySelector('script[data-cf-beacon]') && b.win.localStorage.getItem('stats') === '1' && /on/.test(b.$('statsbtn').textContent));
       b.win.localStorage.setItem('stats', '0'); noErr('izin', b); b.close();
+    },
+    // Küçük telefon (320 px): mevsim çubuğu sığar, renk anahtarı harita düğmelerine binmez, kat etiketi tek satır
+    async smallPhone() {
+      const a = await open({ lang: 'fr', w: 320, h: 568 });
+      await a.go(57.6935, 11.9575);
+      const s = a.$('seasons'), r = el => el.getBoundingClientRect(), ov = (p, q) => p.left < q.right && q.left < p.right && p.top < q.bottom && q.top < p.bottom;
+      check('küçük telefon: mevsim çubuğu sığar (fr)', s.scrollWidth <= s.clientWidth + 1, `${s.scrollWidth}/${s.clientWidth}`);
+      check('küçük telefon: renk anahtarı düğmelere binmez', ![...a.d.querySelectorAll('#fabs .fab')].some(f => ov(r(a.$('key')), r(f))));
+      check('küçük telefon: kat etiketi tek satır', r(a.d.querySelector('.floorbox > label span[data-t]')).height < 26);
+      noErr('küçük telefon', a); a.close();
+    },
+    // Düzen matrisi: telefon/tablet/masaüstü boyutlarında arayüz öğeleri çakışmaz, mevsim çubuğu taşmaz (en uzun etiketler: fr)
+    async layouts() {
+      const ids = ['sform', 'seasons', 'conf', 'key', 'panel', 'fabs', 'backbtn', 'consent'];
+      for (const lang of ['fr', 'en']) for (const [w, h] of [[320, 568], [375, 667], [414, 896], [768, 1024], [820, 1180], [1024, 768], [1280, 800]]) {
+        const a = await open({ lang, w, h });
+        await a.go(57.6935, 11.9575);
+        const els = ids.map(id => [id, a.$(id)]).concat([['zoom', a.d.querySelector('.leaflet-control-zoom')], ['attrib', a.d.querySelector('.leaflet-control-attribution')]])
+          .filter(([, e]) => e && e.offsetParent !== null && a.win.getComputedStyle(e).display !== 'none' && !e.hidden).map(([n, e]) => [n, e.getBoundingClientRect()]);
+        const ov = [];
+        for (let i = 0; i < els.length; i++) for (let j = i + 1; j < els.length; j++) { const [n1, p] = els[i], [n2, q] = els[j];
+          const ow = Math.min(p.right, q.right) - Math.max(p.left, q.left), oh = Math.min(p.bottom, q.bottom) - Math.max(p.top, q.top); if (ow > 2 && oh > 2) ov.push(`${n1}×${n2}`); }
+        const s = a.$('seasons');
+        check(`düzen ${lang} ${w}x${h}: çakışma yok, mevsimler sığar`, !ov.length && s.scrollWidth <= s.clientWidth + 1, ov.join(' ') + ` mevsim ${s.scrollWidth}/${s.clientWidth}`);
+        a.close();
+      }
     },
     // 14. Masaüstü düzeni
     async desktop() {

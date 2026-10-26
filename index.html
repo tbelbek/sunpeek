@@ -53,9 +53,24 @@
   #seasons .tog { width: 36px; padding: 0; justify-content: center; color: var(--muted); }
   #seasons.min button[data-s]:not(.on) { display: none; } #seasons.min button[data-s].on span { display: inline; } #seasons.min button[data-s].on { width: auto; padding: 0 10px; }
   #conf { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; border: 0; border-radius: 20px; background: var(--warn-bg); color: var(--warn-fg); font-size: 13px; font-weight: 600; box-shadow: var(--shadow); }
-  #key { position: absolute; z-index: 1000; right: 8px; top: calc(172px + env(safe-area-inset-top)); /* uyarı çipinin altı */ display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 14px; background: var(--card); box-shadow: var(--shadow); font-size: 12px; color: var(--muted); pointer-events: none; }
+  #key { position: absolute; z-index: 999; right: 8px; top: calc(172px + env(safe-area-inset-top)); /* uyarı çipinin altı */ display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 14px; background: var(--card); box-shadow: var(--shadow); font-size: 12px; color: var(--muted); pointer-events: none; }
   #key i { width: 14px; height: 3px; border-radius: 2px; } #key i + span { margin-right: 4px; } #key span:last-child { margin-right: 0; }
   @media (min-width: 701px) { #key { top: 84px; } }
+  @media (max-width: 700px) { #key { right: auto; left: 8px; } } /* telefonda sağdaki harita düğmelerine binmesin */
+  @media (max-width: 700px) and (max-height: 640px) { html body #fabs .fab { width: 40px; height: 40px; } html body #fabs { gap: 6px; } } /* kısa ekran: düğme sütunu mevsim çubuğuna değmesin */
+  /* dar telefon (≤400 px) ve dar tablet (701–900 px): mevsim çubuğu her dilde sığsın ("Aujourd'hui" uzun) */
+  @media (max-width: 400px), (min-width: 701px) and (max-width: 900px) {
+    html body #seasons button[data-s]:not(.on) span { display: none; }
+    html body #seasons button[data-s]:not(.on) { width: 34px; padding: 0; justify-content: center; } html body #seasons #play, html body #seasons .tog { width: 34px; } html body #seasons button { padding: 0 4px; font-size: 12px; }
+    html body #seasons { padding: 2px; } /* 34 px dokunma alanı korunur, yer iç boşluktan */
+  }
+  /* renk anahtarı dar ekranda kırılabilsin, sağdaki düğmelere uzanmasın */
+  @media (max-width: 700px) { #key { max-width: calc(100vw - 84px); flex-wrap: wrap; row-gap: 2px; } }
+  /* küçük telefon (≤360 px): kat kutusu sığsın */
+  @media (max-width: 360px) {
+    html body .floorbox { padding-left: 8px; gap: 4px; } html body .floorbox .stepper .iconbtn { width: 38px; height: 44px; } html body .floorbox #kat { width: 34px; font-size: 20px; }
+    html body .floorbox > label { font-size: 14px; column-gap: 6px; } html body .floorbox > label span[data-t] { white-space: nowrap; }
+  }
   #conf .ic { width: 16px; height: 16px; } #conf { transition: padding .2s; } #conf.mini { width: 40px; padding: 0; justify-content: center; } #conf.mini span { display: none; } #conf.mini .ic { width: 20px; height: 20px; } #conf.low { background: var(--bad); color: #fff; }
   /* Sağ alt: konum ve pusula düğmeleri */
   #fabs { position: absolute; z-index: 1000; right: 12px; bottom: 24px; display: flex; flex-direction: column; gap: 10px; }
@@ -182,9 +197,11 @@
   @media (min-width: 701px) { body.closed #panel { top: auto; bottom: 24px; } /* kapalı panel masaüstünde sol alta yaslanır */
     /* masaüstü: arama solda, mevsimler hemen yanında (tam genişlik, tüm etiketler); sonuçlar ve uyarı aramanın altında */
     #top { right: 8px; display: grid; grid-template-columns: 360px auto; justify-content: start; align-items: start; }
-    #sform { grid-column: 1; grid-row: 1; } #seasons { grid-column: 2; grid-row: 1; max-width: calc(100vw - 392px); width: max-content; }
+    #sform { grid-column: 1; grid-row: 1; } #seasons { grid-column: 2; grid-row: 1; max-width: calc(100vw - 422px); width: max-content; } /* sağ üstteki zoom düğmelerine girmesin */
     #sresults { grid-column: 1; grid-row: 2; } #conf { position: absolute; top: 2px; right: 52px; } /* masaüstü: sağ üstte, zoom düğmelerinin solunda */
-    #panel { top: 120px; max-height: calc(100% - 132px); } }
+    #panel { top: 120px; max-height: calc(100% - 160px); } #fabs { bottom: 44px; } } /* atıf satırı dar ekranda 2 satır: örtülmesin */
+  /* tablet (701–1100 px): mevsim çubuğu sığsın, seçili olmayan mevsimler yalnız simge (etiket aria-label'da) */
+  @media (min-width: 701px) and (max-width: 1100px) { #seasons button[data-s]:not(.on) span { display: none; } #seasons button[data-s]:not(.on) { width: 44px; padding: 0; justify-content: center; } }
 </style>
 </head>
 <body>

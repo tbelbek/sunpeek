@@ -243,7 +243,8 @@ function drawHouse() {
   const T = trustOf(), Rg = T.rg, lvl = T.lvl, apOf = d => trustOf(d).lvl === 'hi' ? '' : '≈ '; // her gün kendi güveniyle
   const tSel = timeAt(+$('time').value), sl = house.day.slots.find(s => Math.abs(s.t - tSel) <= 150000);
   const incTxt = sl && sl.state !== 'behind' && sl.inc < 90 ? tr('incAt', { t: hm(tSel), a: sl.inc.toFixed(0) }) : tr('incNone', { t: hm(tSel) });
-  const tile = (ic, lbl, r, d) => `<div class="tile">${icon(ic)}<b>${apOf(d)}${dur(r.visH)}</b><span>${lbl}</span></div>`;
+  // hiç güneş yoksa "≈ 0 m" yerine "yok" (m metre gibi okunuyordu)
+  const tile = (ic, lbl, r, d) => `<div class="tile">${icon(ic)}<b>${r.visH < 1 / 60 ? esc(cap(tr('none'))) : apOf(d) + dur(r.visH)}</b><span>${lbl}</span></div>`;
   const addr = hist().find(e => e.key === `${house.id}:${Math.round(house.az)}`)?.addr;
   el.innerHTML = `<div class="tiles">${tile('calendar', dayLbl, house.day, $('date').value)}${tile('sun', tr('summerSol', { d: dm(S.summer) }), sum, `${y}-${S.summer}`)}${tile('snowflake', tr('winterSol', { d: dm(S.winter) }), win, `${y}-${S.winter}`)}</div>
     <button id="confchip" class="chip c-${lvl}" type="button" aria-haspopup="dialog"><span class="dot"></span><span>${esc(tr('confChip', { l: { hi: tr('conf_hi'), mid: tr('conf_mid'), lo: tr('conf_lo') }[lvl] }))}</span><span class="rng">${esc(dur(Rg.lo))} – ${esc(dur(Rg.hi))}</span>${icon('chevron-right')}</button>
@@ -560,12 +561,14 @@ function autoPick() {
     const d = Math.abs(((e.az - want + 540) % 360) - 180);
     if (!best || d < best.d - 1 || (Math.abs(d - best.d) <= 1 && L > best.L)) best = { e, d, L };
   }
-  if (best) { setHouse(best.e); say(tr('autoWall'), 'ok'); }
+  if (best) { setHouse(best.e); say(tr('autoWall'), 'ok'); map.panInside([house.lat, house.lon], { padding: [70, 70] }); } // duvar adres noktasından uzak olabilir
 }
 async function refreshBuildings(force = false, attempt = 0) {
   const id = ++req; // her konum geçişi: bekleyen eski yanıt artık uygulanmaz
   if (!force && last?.complete && pt.distanceTo([last.lat, last.lng]) < 120) { B = localize(last.el, pt.lat, pt.lng, last.ground); B.ok = true; statB(); drawBuildings(); draw(); autoPick(); return rainbow(); }
   clearTimeout(autoRetry);
+  // başka bir bölgeye geçildi: önceki bölgenin binaları yeni noktaya göre sahte gölge çizmesin, yüklenene kadar "bilinmiyor" (gri)
+  if (!last || pt.distanceTo([last.lat, last.lng]) >= 120) { B = { buildings: [], own: [], ok: false }; drawBuildings(); draw(); }
   // Çekim merkezi ~100 m'lik ızgaraya oturtulur: önbellek isabeti için; 400 m yarıçap yine de bolca kapsar
   const lat = +pt.lat.toFixed(3), lng = +pt.lng.toFixed(3);
   $('bstat').textContent = tr('loading');
@@ -602,8 +605,11 @@ async function upgradeLater(keys, id) {
     const keep = house && { lat: house.lat, lon: house.lon, az: house.az }, before = B.buildings.length;
     await refreshBuildings(true);
     if (keep && last?.src === 'osm') {
-      const [x, y] = frame(pt.lat, pt.lng).to(keep.lat, keep.lon), e = pickEdge(B.buildings.concat(B.own), x, y, 5);
-      if (e && Math.abs(((e.az - keep.az + 540) % 360) - 180) < 30) setHouse(e); else house = null, drawBuildings(), draw();
+      // OSM çizimi yedekten farklı olabilir: önce aynı yer ve yön (5 m, 30°), sonra 15 m içindeki duvar, o da yoksa bu noktada
+      // otomatik seçim. Önce sessizce seçim siliniyordu ve üstüne "güncellendi" yazıyordu.
+      const all = B.buildings.concat(B.own), [x, y] = frame(pt.lat, pt.lng).to(keep.lat, keep.lon), near = pickEdge(all, x, y, 5);
+      const e = near && Math.abs(((near.az - keep.az + 540) % 360) - 180) < 30 ? near : pickEdge(all, x, y, 15);
+      if (e) setHouse(e); else { house = null; pendingPick = { lat: pt.lat, lon: pt.lng, osmId: null }; autoPick(); if (!house) { drawBuildings(); draw(); } }
     }
     if (keep || B.buildings.length !== before) say(tr('dataUpgraded'), 'ok'); // binasız yerde değişen bir şey yok: mesaj gürültü olurdu
     return;
@@ -781,6 +787,9 @@ $('sform').onsubmit = async e => {
       res = await srv.json();
     } catch (err) { try { res = await photon(q); } catch { throw err; } } // sunucu yoksa doğrudan Photon (komoot), aynı OSM verisi
     res = res.filter(x => Number.isFinite(+x.lat) && Number.isFinite(+x.lon) && Math.abs(+x.lat) <= 90 && Math.abs(+x.lon) <= 180);
+    // kapı numarası yazıldıysa o numarayı taşıyan sonuç öne (Photon önce caddeyi döndürüyordu)
+    const num = q.match(/\b\d+[a-z]?\b/i)?.[0];
+    if (num) res.sort((a, b) => new RegExp(`\\b${num}\\b`, 'i').test(b.display_name) - new RegExp(`\\b${num}\\b`, 'i').test(a.display_name));
     if (seq !== searchSeq) return; // daha yeni bir arama ya da seçim var
     box.innerHTML = res.length ? '' : `<span class="muted">${tr('noResults')}</span>`;
     for (const x of res) {
@@ -867,7 +876,7 @@ setInterval(drawSky, 60000); // "şu an" göstergesi
 const legend = [['#1ad940', 'lgVis'], ['#f7332a', 'lgBlock'], ['#a0522d', 'lgTerrain'], ['#ddd', 'lgBehind'], ['#ff9900', 'lgRiseSet'], ['#ffe600', 'lgSel'], ['#4af', 'lgHeading']]
   .map(([c, k]) => `<span style="white-space:nowrap;margin-right:8px"><span class="leg" style="background:${c}"></span>${tr(k)}</span>`).join(' ');
 // Native <dialog>: odak kapanı, Escape ve kapanınca odağın geri dönmesi tarayıcıdan gelir
-function openCard(html) { $('card').innerHTML = html; if (!$('modal').open) $('modal').showModal(); $('card').querySelector('button')?.focus(); }
+function openCard(html) { $('card').innerHTML = html; $('consent').hidden = true; if (!$('modal').open) $('modal').showModal(); $('card').querySelector('button')?.focus(); } // izin kutusu kartın arkasında kalmasın; kapanınca yeniden sorulur
 function closeCard() { if ($('modal').open) $('modal').close(); }
 $('modal').onclick = e => { if (e.target === $('modal')) closeCard(); }; // arka plana dokununca kapan
 // İzinler kullanım anında değil, nedenleri anlatıldıktan sonra tek düğmeyle istenir (iOS izni dokunuşun içinde ister).
@@ -895,7 +904,10 @@ const drawStats = () => { $('statsbtn').textContent = tr(lsGet('stats') === '1' 
 function setStats(on) { lsSet('stats', on ? '1' : '0'); $('consent').hidden = true; if (on) loadStats(); drawStats(); }
 $('consentYes').onclick = () => setStats(true); $('consentNo').onclick = () => setStats(false);
 $('statsbtn').onclick = () => { const on = lsGet('stats') !== '1'; setStats(on); if (!on) say(tr('statsOffReload'), 'info'); }; // yüklenmiş betik yeniden yüklemede kalkar
-if (lsGet('stats') === '1') loadStats(); else if (lsGet('stats') == null && !new URLSearchParams(location.search).has('smoke')) $('consent').hidden = false;
+// tanıtım kartı (modal) açıkken izin kutusu kartın arkasında kalıp dokunulamıyordu: kart kapanınca sorulur
+const askStats = () => { if (lsGet('stats') == null && !$('modal').open && !new URLSearchParams(location.search).has('smoke')) $('consent').hidden = false; };
+if (lsGet('stats') === '1') loadStats(); else askStats();
+$('modal').addEventListener('close', askStats);
 drawStats();
 $('netbtn').onclick = () => {
   const errOf = { dsSunpeek: 'sunpeek', dsOverpass: 'overpass', dsOverture: 'overture', dsElev: 'elev', dsTerr: 'terr', dsTZ: 'tz', dsPhoton: 'photon', dsIrr: 'irr', dsTiles: 'tiles' };

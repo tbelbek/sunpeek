@@ -290,3 +290,17 @@ console.log('codex regresyonları ok');
   assert.notEqual(by(11).src, 'small', 'küçük ev (sıra ev) kuraldan muaf');
 }
 console.log('güven kalibrasyonu ok');
+
+// IndexedDB hiç yanıt vermezse (bekleyen silme, bozuk depolama) önbellek 3 sn'de vazgeçer; uygulama ağdan devam eder
+{
+  globalThis.indexedDB = { open: () => ({}) }; // olay hiç gelmez
+  const { cget, cput, cmany } = await import('./cache.js?hang');
+  const t0 = Date.now();
+  assert.equal(await cget('x'), undefined);
+  await cput('x', 1);
+  const m = await cmany(['a', 'b'], 1000);
+  assert.deepEqual(m.missing, ['a', 'b']);
+  assert.ok(Date.now() - t0 < 4000, `takılan IndexedDB beklenmedi: ${Date.now() - t0} ms`);
+  delete globalThis.indexedDB;
+}
+console.log('indexeddb zaman aşımı ok');
