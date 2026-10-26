@@ -250,7 +250,8 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
       check('güven: 5 sn sonra ünleme katlandı, ekran içinde', a.$('conf').classList.contains('mini') && cr.width <= 44 && cr.left >= 0 && cr.right <= a.win.innerWidth, JSON.stringify(cr));
       a.$('conf').click(); await sl(200);
       const c = a.$('card').innerText, link = a.$('card').querySelector('a')?.href || '';
-      check('güven: açıklama ve OSM linki', /OpenStreetMap/.test(c) && /openstreetmap\.org\/edit#map=19\//.test(link) && /\d+ binadan \d+/.test(c), c.slice(0, 120) + ' ' + link);
+      // duvar seçiliyken: birleşik güven kartı, her etken ayrı satırda (duyarlılık, gölge yapan binaların verisi, kaynak, dahil olmayanlar)
+      check('güven: etken satırları ve OSM linki', a.d.querySelectorAll('#card .tf li').length === 4 && /OpenStreetMap/.test(c) && /openstreetmap\.org\/edit#map=19\//.test(link), c.slice(0, 160) + ' ' + link);
       check('güven: link yeni sekmede, noopener', a.$('card').querySelector('a')?.rel.includes('noopener'));
       a.$('confClose').click(); await sl(100);
       check('güven: kapat', !a.$('modal').open);
@@ -282,7 +283,7 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
       await a.go(51.4779, -0.0015);
       const realFetch = a.win.fetch;
       a.win.fetch = () => Promise.reject(new Error('offline'));
-      await a.go(+(51.40 + Math.random() * 0.1).toFixed(4), +(-0.20 + Math.random() * 0.1).toFixed(4)); // her koşuda önbellekte olmayan bir yer
+      await a.go(+(44 + Math.random() * 12).toFixed(4), +(-4 + Math.random() * 30).toFixed(4)); // geniş alan: arazi karosu da önbellekte olmasın
       await until(() => a.$('retry'), 15000);
       const t = gtxt(a);
       check('ağ hatası: görünür bina mesajı', /Couldn't load buildings/.test(t), t);

@@ -78,6 +78,8 @@
   .tile > .ic { display: block; margin: 0 auto 2px; width: 18px; height: 18px; color: var(--muted); } .tile:first-child > .ic { color: var(--accent); }
   .chip { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin-top: 8px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--fg); font-weight: 600; text-align: left; }
   .chip .rng { margin-left: auto; color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; } .chip > .ic { color: var(--muted); width: 18px; height: 18px; }
+  .tf { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 8px; } .tf li { display: flex; gap: 10px; align-items: baseline; }
+  .tf .dot { position: relative; top: 1px; } .tf .t2 { background: var(--ok); } .tf .t1 { background: #f59e0b; } .tf .t0 { background: var(--bad); } .tf .tx { background: var(--muted); }
   .chip .dot { background: var(--muted); } .chip.c-hi .dot { background: var(--ok); } .chip.c-mid .dot { background: #f59e0b; } .chip.c-lo .dot { background: var(--bad); }
   .sumic { display: inline-flex; align-items: center; gap: 8px; } .sumic .ic { color: var(--accent); }
   .tile span { font-size: 13px; color: var(--muted); }
@@ -93,11 +95,15 @@
   .say .tipbtn { margin: -10px -8px -10px auto; }
   .calrow { display: flex; align-items: center; gap: 8px; margin-top: 8px; } .calrow .btn { flex: 1; } .calrow .tipbtn { margin: 0; }
   /* yükleme göstergesi: masaüstünde zoom düğmelerinin solunda, telefonda mevsim çubuğunun altında sağda */
-  #spin { position: absolute; z-index: 1001; display: none; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 20px; background: var(--card); box-shadow: var(--shadow);
-    right: 12px; top: calc(136px + env(safe-area-inset-top)); } body.loading #spin { display: flex; }
-  #spin::after { content: ''; width: 18px; height: 18px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } } @media (prefers-reduced-motion: reduce) { #spin::after { animation-duration: 2.4s; } }
-  @media (min-width: 701px) { #spin { top: 10px; right: 52px; } body.loading #conf { right: 96px; } }
+  /* yükleme: haritanın ortasında yazılı hap (köşedeki küçük halka fark edilmiyordu); dokunmaları engellemez */
+  #spin { position: absolute; z-index: 1001; display: none; align-items: center; gap: 10px; left: 50%; top: 34%; transform: translateX(-50%); padding: 10px 18px 10px 14px; border-radius: 24px;
+    background: var(--card); color: var(--fg); border: 2px solid var(--accent); box-shadow: var(--shadow); font-size: 15px; font-weight: 600; white-space: nowrap; pointer-events: none; }
+  body.loading #spin { display: flex; animation: fadein .25s; }
+  #spin::before, body.loading #sumdot { content: ''; width: 18px; height: 18px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; background: none; box-sizing: border-box; flex: none; }
+  body.loading #sumdot { width: 14px; height: 14px; border-width: 2px; }
+  @keyframes spin { to { transform: rotate(360deg); } } @keyframes fadein { from { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { #spin::before, body.loading #sumdot { animation-duration: 2.4s; } }
+  @media (min-width: 701px) { #spin { left: calc(50% + 184px); } }
   #tip { position: fixed; z-index: 4000; max-width: min(320px, calc(100vw - 16px)); padding: 10px 12px; border-radius: 10px; background: var(--fg); color: var(--bg); font-size: 14px; line-height: 1.45; box-shadow: var(--shadow); }
   .energy .tipbtn { float: right; margin: -10px -10px 0 0; }
   .annual .big { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -213,7 +219,7 @@
   <button id="conf" style="display:none" aria-haspopup="dialog"><svg class="ic" aria-hidden="true"><use href="#i-triangle-alert"/></svg><span id="conftxt"></span></button>
 </div>
 <div id="key" hidden><i style="background:#1ad940"></i><span data-t="lgVis"></span><i style="background:#f7332a"></i><span data-t="lgBlock"></span></div>
-<div id="spin" role="status" data-t-aria="loadingData" data-t-title="loadingData"></div>
+<div id="spin" role="status"><span data-t="loadingData"></span></div>
 <div id="fabs">
   <button id="geo" class="fab" data-t-aria="myLoc"><svg class="ic" aria-hidden="true"><use href="#i-locate"/></svg></button>
   <button id="shadowbtn" class="fab" data-t-aria="shadows" data-t-title="shadows" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-shadow"/></svg></button>

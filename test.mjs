@@ -1,6 +1,6 @@
 // node test.mjs — sun.js'i bağımsız bir NOAA (Python) uygulamasına ve sunrise-sunset.org değerlerine karşı doğrular.
 import assert from 'node:assert/strict';
-import { sunpos, dayEvents, blocked, blocker, shadowRing, facadeRange, localize, frame, pickEdge, rayEdge, facadeDay, height, maxFloor, zoned, hmIn, heightConfidence, incidence, clearSkyDNI, annualPOA, pvYield, iam, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, HZ_D, HZ_STEP } from './sun.js';
+import { heightBounds, sunpos, dayEvents, blocked, blocker, shadowRing, facadeRange, localize, frame, pickEdge, rayEdge, facadeDay, height, maxFloor, zoned, hmIn, heightConfidence, incidence, clearSkyDNI, annualPOA, pvYield, iam, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, HZ_D, HZ_STEP } from './sun.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} != ${b}`);
 const utcHM = t => new Date(Math.floor(t / 60000) * 60000).toISOString().slice(11, 16); // saniyeyi keser
@@ -274,3 +274,19 @@ console.log('emoji yok ok');
   assert.equal(+facadeDay({ el: [] }, { lat: 80, lon: 0, az: 180, id: null }, 1.5, 2026, 6, 21, 7, 'UTC', 0).windows[0][1], Date.UTC(2026, 5, 22));
 }
 console.log('codex regresyonları ok');
+
+// Güven kalibrasyonu: yönlü paylar ve küçük yapı kuralı (bkz. sun.js heightBounds notu)
+{
+  assert.deepEqual(heightBounds({ src: 'height', h: 20 }), [1.5, 1.5]);
+  const [dn, up] = heightBounds({ src: 'levels', h: 20 }); assert.ok(up > dn, 'kat: yukarı pay büyük (tahmin çoğunlukla az)');
+  const sq2 = (cx, cy, r) => [[cx - r, cy - r], [cx + r, cy - r], [cx + r, cy + r], [cx - r, cy + r], [cx - r, cy - r]];
+  const el2 = (ring, tags, id) => ({ type: 'way', id, tags, geometry: ring.map(([x, y]) => ({ lon: 18 + x / (111320 * Math.cos(60 * Math.PI / 180)), lat: 60 + y / 110574 })) });
+  // yakında 3 ölçülü 15 m bina: türü belirsiz 25 m² kulübe ortancayı (15 m) değil 4 m'yi alır; 400 m² etiketsiz bina ortancayı alır
+  const known = [1, 2, 3].map(i => el2(sq2(60 * i, 60, 10), { building: 'yes', height: '15' }, i));
+  const L = localize([...known, el2(sq2(0, -40, 2.5), { building: 'yes' }, 9), el2(sq2(0, -90, 10), { building: 'yes' }, 10), el2(sq2(-80, 0, 2.5), { building: 'house' }, 11)], 60, 18).buildings;
+  const by = id => L.find(b => b.id === id);
+  assert.equal(by(9).h, 4); assert.equal(by(9).src, 'small');
+  assert.equal(by(10).h, 15); assert.equal(by(10).src, 'median');
+  assert.notEqual(by(11).src, 'small', 'küçük ev (sıra ev) kuraldan muaf');
+}
+console.log('güven kalibrasyonu ok');

@@ -225,12 +225,12 @@ function drawHouse() {
   saveHist({ day: house.day, sum, win, fmt });
   // Önce cevap: üç büyük kutucuk (seçili gün / yaz / kış), altında güven çipi ve saat aralıkları
   const [, mo, da] = ymd(), dayLbl = $('date').value === todayStr ? tr('today') : dm(`${pad(mo)}-${pad(da)}`);
-  const Rg = confOf(), lvl = Rg.conf >= 75 ? 'hi' : Rg.conf >= 45 ? 'mid' : 'lo', ap = lvl === 'hi' ? '' : '≈ ';
+  const T = trustOf(), Rg = T.rg, lvl = T.lvl, apOf = d => trustOf(d).lvl === 'hi' ? '' : '≈ '; // her gün kendi güveniyle
   const tSel = timeAt(+$('time').value), sl = house.day.slots.find(s => Math.abs(s.t - tSel) <= 150000);
   const incTxt = sl && sl.state !== 'behind' && sl.inc < 90 ? tr('incAt', { t: hm(tSel), a: sl.inc.toFixed(0) }) : tr('incNone', { t: hm(tSel) });
-  const tile = (ic, lbl, r) => `<div class="tile">${icon(ic)}<b>${ap}${dur(r.visH)}</b><span>${lbl}</span></div>`;
+  const tile = (ic, lbl, r, d) => `<div class="tile">${icon(ic)}<b>${apOf(d)}${dur(r.visH)}</b><span>${lbl}</span></div>`;
   const addr = hist().find(e => e.key === `${house.id}:${Math.round(house.az)}`)?.addr;
-  el.innerHTML = `<div class="tiles">${tile('calendar', dayLbl, house.day)}${tile('sun', tr('summerSol', { d: dm(S.summer) }), sum)}${tile('snowflake', tr('winterSol', { d: dm(S.winter) }), win)}</div>
+  el.innerHTML = `<div class="tiles">${tile('calendar', dayLbl, house.day, $('date').value)}${tile('sun', tr('summerSol', { d: dm(S.summer) }), sum, `${y}-${S.summer}`)}${tile('snowflake', tr('winterSol', { d: dm(S.winter) }), win, `${y}-${S.winter}`)}</div>
     <button id="confchip" class="chip c-${lvl}" type="button" aria-haspopup="dialog"><span class="dot"></span><span>${esc(tr('confChip', { l: { hi: tr('conf_hi'), mid: tr('conf_mid'), lo: tr('conf_lo') }[lvl] }))}</span><span class="rng">${esc(dur(Rg.lo))} – ${esc(dur(Rg.hi))}</span>${icon('chevron-right')}</button>
     <div class="wins"><span>${dayLbl}</span><span>${fmt(house.day)}</span><span>${tr('summer')}</span><span>${fmt(sum)}</span><span>${tr('winter')}</span><span>${fmt(win)}</span></div>
 `;
@@ -453,7 +453,7 @@ async function fetchCells(keys) { // eksik/bayat hücreleri kapsayan tek kutu; h
 // Hesaba yalnız 500 m içindekiler girer (en alçak kış güneşinde bile daha uzaktaki binanın gölgesi düşmez); ±600 m önbellek içindir
 const within = (lat, lng, m = 600) => { const k = Math.cos(lat * Math.PI / 180), d = g => Math.hypot((g.lat - lat) * 111320, (g.lon - lng) * 111320 * k) < m;
   return e => (e.geometry ?? e.members?.flatMap(x => x.geometry ?? []) ?? []).some(d); }; // herhangi bir köşesi yakındaysa (büyük binalar merkezden kesilmesin)
-async function fetchEls(lat, lng) { return (await fetchArea(lat, lng)).filter(within(lat, lng)); } // hesaba 600 m (en yakın köşe)
+async function fetchEls(lat, lng) { const a = await fetchArea(lat, lng); return Object.assign(a.filter(within(lat, lng)), { backup: a.backup }); } // hesaba 600 m (en yakın köşe); yedek işareti korunur
 async function fetchArea(lat, lng) {
   const keys = cellsAround(lat, lng), { fresh, stale, missing } = await cmany(keys, BLD_TTL);
   if (stale.size) viaServer([...stale.keys()]).catch(() => {}); // arka planda tazele
@@ -462,7 +462,9 @@ async function fetchArea(lat, lng) {
   // Geç gelen Overpass yanıtı yine hücrelere yazılır: bir sonraki ziyarette ana kaynağın verisi önbellekten gelir.
   const osm = viaServer(missing).then(got => [...fresh.values(), ...stale.values(), ...got.values()].flat());
   let ovt = null;
-  const startOvt = () => ovt ??= backup('overture', () => overtureBuildings(lat, lng, BLD_R, AbortSignal.timeout(30000), idb)).then(el => (useOverture(), el));
+  // yedek veri işaretlenir (backup = beklenen OSM hücreleri): sonuç kaynağa göre değişebildiği için güvende gösterilir ve
+  // sunucu OSM'yi getirince sayfa ona geçer (upgradeLater)
+  const startOvt = () => ovt ??= backup('overture', () => overtureBuildings(lat, lng, BLD_R, AbortSignal.timeout(30000), idb)).then(el => (useOverture(), Object.assign(el, { backup: missing })));
   // devre kesici: Overpass yakın zamanda yanıt veremediyse Overture beklemeden başlar (yarış yine sürer)
   const late = new Promise((res, rej) => {
     const t = setTimeout(() => { osmDownUntil = Date.now() + 600000; startOvt().then(res, rej); }, Date.now() < osmDownUntil ? 0 : HEDGE);
@@ -563,7 +565,8 @@ async function refreshBuildings(force = false, attempt = 0) {
     fetchElev(horizonPoints(hlat, hlng), `hz:${hlat},${hlng}`)]);
   if (id !== req) return;
   last = { el: el.value ?? [], ground: gr.value ? makeGround(lat, lng, gr.value) : null, hz: hz.value ? makeHorizon(hz.value) : null, lat, lng,
-           complete: el.status === 'fulfilled' && !!gr.value && !!hz.value };
+           complete: el.status === 'fulfilled' && !!gr.value && !!hz.value, src: el.value?.backup ? 'overture' : 'osm' };
+  if (el.value?.backup) upgradeLater(el.value.backup, id);
   B = localize(last.el, pt.lat, pt.lng, last.ground); B.ok = el.status === 'fulfilled'; statB();
   const fails = [];
   if (el.status === 'rejected') fails.push(tr('bFail', { e: el.reason.message }));
@@ -576,6 +579,24 @@ async function refreshBuildings(force = false, attempt = 0) {
   } else if ($('retry')) $('gstat').textContent = '';
   drawBuildings(); draw(); autoPick();
   if (B.ok) rainbow();
+}
+// Yedek (Overture) kullanıldıysa: sunucu OSM hücrelerini arka planda çekmeye devam eder. Birkaç kez sorulur; gelince
+// aynı yer OSM ile yeniden hesaplanır ve seçili duvar (aynı nokta, benzer yön) korunur. Kullanıcı başka yere geçtiyse bırakılır.
+async function upgradeLater(keys, id) {
+  for (const s of [20, 45, 90, 180]) {
+    await new Promise(r => setTimeout(r, s * 1000));
+    if (id !== req) return;
+    try { await viaServer(keys); } catch { continue; } // hâlâ eksik
+    if (id !== req) return;
+    const keep = house && { lat: house.lat, lon: house.lon, az: house.az };
+    await refreshBuildings(true);
+    if (keep && last?.src === 'osm') {
+      const [x, y] = frame(pt.lat, pt.lng).to(keep.lat, keep.lon), e = pickEdge(B.buildings.concat(B.own), x, y, 5);
+      if (e && Math.abs(((e.az - keep.az + 540) % 360) - 180) < 30) setHouse(e); else house = null, drawBuildings(), draw();
+    }
+    say(tr('dataUpgraded'), 'ok');
+    return;
+  }
 }
 function statB() {
   const g = B.buildings.filter(b => b.guessed).length;
@@ -851,10 +872,9 @@ let conf = null;
 // seçili cepheye / bina listesine bağlı önbellek: kaydırıcı ve oynatma her karede yeniden hesaplatmasın
 function getConf() {
   if (!pt || !last) return null;
-  if (house) return house.conf ??= (() => {
-    const L0 = localize(house.env.el, house.lat, house.lon, house.env.ground), all = L0.buildings.concat(L0.own);
-    return heightConfidence(all, house.az, all.find(b => b.id === house.id));
-  })();
+  // duvar: kart birleşik güveni gösterir; haritadaki ⚠ yalnız gölgeyi yapan binaların yükseklik verisi zayıfsa çıkar (güven çipi
+  // panelde zaten var; ⚠ çıktığında çip de en çok "orta"dır, çelişmez)
+  if (house) { const T = trustOf(); return { ...T, level: T.share > 0.8 ? 'low' : T.share > 0.5 ? 'mid' : 'ok' }; }
   return B.conf ??= heightConfidence(B.buildings, pt.lat >= 0 ? 180 : 0);
 }
 function drawConf() {
@@ -870,11 +890,27 @@ function drawConf() {
   $('conf').setAttribute('aria-label', tr('confTitle'));
 }
 $('conf').onclick = () => openConf();
-// Güven: tüm komşu yükseklikleri kendi belirsizliklerinin (ölçülmüş ±1,5 m, kat sayısından ±(1+0,3·kat) m, tahmini ±%35–45)
+// Güven aralığı: tüm komşu yükseklikleri kendi belirsizliklerinin (sun.js heightBounds, kalibre edilmiş yönlü paylar)
 // ucunda ve pencere ±0,5 m olsaydı sonucun aralığı (sun.js facadeRange). Ağaçlar ve haritada olmayan binalar dahil değil.
 function confOf(date = $('date').value) {
-  const envR = house.envR ??= { lo: { ...house.env, hs: 1 }, hi: { ...house.env, hs: -1 } }, [y, m, d] = date.split('-').map(Number);
+  const envR = house.envR ??= { lo: { ...house.env, hs: 1 }, hi: { ...house.env, hs: -1 }, base: house.env }, [y, m, d] = date.split('-').map(Number);
   return facadeCached('rng' + date, () => facadeRange(envR, house, surfEye(), y, m, d, TZ, tilt));
+}
+// Birleşik güven (seçili duvar, bir gün): en zayıf etken belirler.
+//  1) yükseklik duyarlılığı: tüm komşular yükseklik payının ucunda ve pencere ±0,5 m iken sonucun aralığı (≥75 yüksek, ≥45 orta)
+//  2) gölgeyi yapan binaların verisi: gölgeli sürenin yarısından çoğu yüksekliği tahmini (etiketsiz) binalardan geliyorsa en çok orta
+//  3) kaynak: yedek (Overture) bina çizimleri OSM'den farklı olabilir, duvar bile başka seçilebilir: en çok orta
+// Ağaçlar, haritada olmayan binalar ve balkonlar hiçbir etkende yok; kartta her zaman yazılır. Bu bir doğruluk olasılığı değildir.
+function trustOf(date = $('date').value) {
+  return facadeCached('trust' + date, () => {
+    const [y, m, d] = date.split('-').map(Number), rg = confOf(date);
+    const day = facadeCached(date, () => facadeDay(house.env, house, surfEye(), y, m, d, 5, TZ, tilt));
+    const L0 = localize(house.env.el, house.lat, house.lon, house.env.ground), byId = new Map(L0.buildings.map(b => [b.id, b]));
+    const blocked = day.slots.filter(s => s.state === 'block'), est = blocked.filter(s => byId.get(s.by)?.guessed).length;
+    const share = blocked.length ? est / blocked.length : 0, backup = house.env.src === 'overture';
+    const f = { range: rg.conf >= 75 ? 2 : rg.conf >= 45 ? 1 : 0, heights: share > 0.5 ? 1 : 2, source: backup ? 1 : 2 };
+    return { rg, share, backup, f, lvl: ['lo', 'mid', 'hi'][Math.min(...Object.values(f))] };
+  });
 }
 function confRange() {
   const y = +$('date').value.slice(0, 4), S = SEASON(house.lat);
@@ -886,10 +922,21 @@ function openConf() {
   conf = getConf();
   if (!conf) return;
   const o = house ? { lat: house.lat, lng: house.lon } : pt;
+  const edit = `<p>${tr('confFix')}</p><p><a href="https://www.openstreetmap.org/edit#map=19/${o.lat.toFixed(5)}/${o.lng.toFixed(5)}" target="_blank" rel="noopener">${tr('confEdit')} ↗</a></p>`;
+  if (house) { // duvar: her etken ayrı satırda, en zayıfı sonucu belirler
+    const T = conf, row = (v, text) => `<li><span class="dot t${v}"></span><span>${esc(text)}</span></li>`;
+    openCard(`<h2 id="cardtitle">${tr('trustTitle')}</h2><p>${esc(tr('trustLead', { l: tr({ hi: 'conf_hi', mid: 'conf_mid', lo: 'conf_lo' }[T.lvl]) }))}</p><ul class="tf">
+      ${row(T.f.range, tr('tfRange', { lo: dur(T.rg.lo), hi: dur(T.rg.hi) }))}
+      ${row(T.f.heights, T.share ? tr('tfHeights', { p: Math.round(T.share * 100) }) : tr('tfHeightsOk'))}
+      ${row(T.f.source, tr(T.backup ? 'tfBackup' : 'tfOsm'))}
+      ${row('x', tr('tfMissing'))}</ul>
+      <h3>${tr('confRangeTitle')}</h3><table class="net">${confRange()}</table><p class="muted">${tr('confRangeNote')}</p>${edit}
+      <div class="actions"><button class="btn" id="confClose">${tr('close')}</button></div>`);
+    $('confClose').onclick = closeCard;
+    return;
+  }
   openCard(`<h2 id="cardtitle">${tr('confTitle')}</h2><p>${tr('confBody', { g: conf.guessed, n: conf.n })}</p>
-    ${house ? `<h3>${tr('confRangeTitle')}</h3><table class="net">${confRange()}</table><p class="muted">${tr('confRangeNote')}</p>` : ''}
-    ${conf.targetGuessed ? `<p>${tr('confTarget')}</p>` : ''}<p>${tr('confFix')}</p>
-    <p><a href="https://www.openstreetmap.org/edit#map=19/${o.lat.toFixed(5)}/${o.lng.toFixed(5)}" target="_blank" rel="noopener">${tr('confEdit')} ↗</a></p>
+    ${conf.targetGuessed ? `<p>${tr('confTarget')}</p>` : ''}${edit}
     <div class="actions"><button class="btn" id="confClose">${tr('close')}</button></div>`);
   $('confClose').onclick = closeCard;
 };

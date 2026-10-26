@@ -145,12 +145,18 @@ function shapes(elements) {
 // building:part varsa, parça merkezini içeren dış çizgi atılır (yüksekliği parçalar taşır; çizginin tahmini 12 m'si ezmesin).
 // own: noktayı içeren binalar (hesaptan çıkarılır).
 const GENERIC = new Set(['yes', 'apartments', 'residential', 'commercial', 'office', 'retail', 'mixed_use']), RESI = new Set(['apartments', 'residential']);
+const TALL = new Set(['house', 'apartments', 'residential', 'terrace', 'detached', 'semidetached_house', 'retail', 'commercial', 'office', 'mixed_use', 'hotel', 'church', 'tower']);
+const areaOf = r => Math.abs(r.reduce((a, [x, y], i) => i ? a + r[i - 1][0] * y - x * r[i - 1][1] : 0, 0)) / 2;
 export function localize(elements, lat, lon, ground = null) {
   const F = frame(lat, lon), z0 = ground ? ground(lat, lon) : 0, all = [];
   for (const s of shapes(elements)) {
     const ring = s.geometry.map(p => F.to(p.lat, p.lon)), xs = ring.map(p => p[0]), ys = ring.map(p => p[1]);
     const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-    all.push({ id: s.id, ring, ...height(s.tags), type: s.tags.building ?? 'yes', part: !!s.tags['building:part'], geom: s.geometry, x0, x1, y0, y1, cx, cy,
+    const hh = height(s.tags), type = s.tags.building ?? 'yes';
+    // Küçük, türü belirsiz yapı (<30 m²: kulübe, garaj, trafo): etiketli 818 binada ortanca 4 m (p10 3, p90 12,9). Komşu ortancası
+    // bunlara 13–15 m veriyor, haritada olmayan gölgeler çiziyordu. Konut/ticari türler hariç: dar sıra evler küçük ama yüksek.
+    if (hh.guessed && !TALL.has(type) && areaOf(ring) < 30) Object.assign(hh, { h: 4, src: 'small' });
+    all.push({ id: s.id, ring, ...hh, type, part: !!s.tags['building:part'], geom: s.geometry, x0, x1, y0, y1, cx, cy,
                dz: ground ? ground(...F.from(cx, cy)) - z0 : 0 });
   }
   // Etiketsiz genel binalar için yakındaki AYNI TÜRDEN ölçülü binaların ortancası (≥3 örnek). Türler karıştırılmaz:
@@ -159,11 +165,11 @@ export function localize(elements, lat, lon, ground = null) {
     const known = all.filter(b => !b.guessed && b.type === type).map(b => b.h).sort((a, b) => a - b);
     if (known.length < 3) continue;
     const med = known[known.length >> 1];
-    for (const b of all) if (b.guessed && b.type === type) { b.h = RESI.has(type) ? Math.max(b.h, med) : med; b.src = 'median'; }
+    for (const b of all) if (b.guessed && b.src !== 'small' && b.type === type) { b.h = RESI.has(type) ? Math.max(b.h, med) : med; b.src = 'median'; }
   }
   const parts = all.filter(b => b.part);
   // dış çizgi, içindeki parçalar alanının çoğunu (≥%80) kaplıyorsa düşer; kısmen kaplıyorsa kalır (kalan kısmı da gölge yapar)
-  const area = r => Math.abs(r.reduce((a, [x, y], i) => i ? a + r[i - 1][0] * y - x * r[i - 1][1] : 0, 0)) / 2;
+  const area = areaOf;
   // Parçalar üst üste biniyor ya da dışa taşıyorsa toplam alan dış çizgiyi aşar: o zaman kapsama iddia edilmez, dış çizgi kalır.
   // ponytail: örtüşme toplam alanla sezilir; küçük örtüşmeler kaçabilir, gerekirse çokgen kesişimi.
   const covered = b => { const s = parts.filter(p => p.cx >= b.x0 && p.cx <= b.x1 && p.cy >= b.y0 && p.cy <= b.y1 && pip(p.cx, p.cy, b.ring)).reduce((a, p) => a + area(p.ring), 0), A = area(b.ring);
@@ -323,8 +329,17 @@ export const pvYield = poa => ({ perKWp: poa * PV.pr, perM2: poa * PV.eff * PV.p
 // Her dilime geliş açısı (inc) eklenir; vis dilimlerinden açık gök doğrudan enerji kWh/m² (energy) toplanır.
 // Cephe için gölge adayı binalar: yalnız duvarın önündeki yarım düzlemde (arkadaki bina o duvara gölge yapamaz) ve 400 m içinde.
 // Pahalı yerelleştirme (tüm çekilen binalar) cephe başına bir kez yapılır ve env üzerinde saklanır; kat/aralık/yıllık hesap aynısını kullanır.
-// Yükseklik belirsizliği (1σ değil, makul sınır): ölçülmüş ±1,5 m; kat sayısından ±(1 + 0,3·kat) m; komşu ortancası ±%35; tür varsayılanı ±%45
-export const heightError = b => b.src === 'height' ? 1.5 : b.src === 'levels' ? 1 + 0.3 * (b.levels ?? 0) : b.src === 'median' ? 0.35 * b.h : 0.45 * b.h;
+// Yükseklik belirsizliği [aşağı, yukarı] metre, kaynağa göre: bina başına gerçek/tahmin oranının p10–p90'ı. Kalibrasyon 2026-10-26,
+// OSM: Göteborg, Stockholm, Malmö, Kopenhag, Oslo, Helsinki, Hamburg, Berlin, İstanbul (etiketler gizlenip yeniden tahmin edildi).
+//  kat sayısından (height etiketli 103 bina, ≤6 m/kat): 0,90–1,56 → −%10 / +%55. Ortanca 1,13 ama 3 m/kat + 1 m'yi büyütmek
+//    çubuk doğruluğunu düşürdü (%96,0 → %94,8–95,3): etiket mahyayı ölçer, eğik çatının gölgesi saçaktan düşer. Formül kalır.
+//  komşu ortancası / tür varsayılanı: üst paylar saklama deneyinde (yükseklik ve kat gizli) gerçek sonucun aralığa düşme
+//    oranını %76'dan %88'e çıkaran değerler → −%30 / +%120 ve −%35 / +%150.
+//  küçük yapı (<30 m², 818 bina): 3–12,9 m, 4 m'ye göre → −%25 / +%220.   etiketli yükseklik: bağımsız veri yok → ±1,5 m.
+// Aralık tüm komşuları AYNI ANDA uca iter; bu birleşik senaryo tek binanın p90'ından uçtur. Saklama deneyinde (etiketli binaların
+// yarısı gizli, 9 şehir) gerçek sonuç aralığın içinde %96–98.
+const HB = { levels: [0.10, 0.55], median: [0.30, 1.2], small: [0.25, 2.2], guess: [0.35, 1.5] };
+export const heightBounds = b => b.src === 'height' ? [1.5, 1.5] : (HB[b.src] ?? HB.guess).map(k => k * b.h);
 const CAND = new WeakMap();
 // Halkanın gözlemciye (0,0) en yakın noktası: kenarlara nokta-doğru parçası uzaklığı (uzun duvarın ortası da yakalanır), içindeyse 0
 export function ringDist(ring) {
@@ -345,7 +360,7 @@ function candidates(env, f, tilt = 90) {
     // en yakın kenara göre 600 m (veri ±600 m çekilir). Önündeki yarım düzlem süzgeci yalnız duvar için: eğik panel arkadan da güneş alır.
     const all = buildings.concat(own).filter(b => b.id === f.id || (ringDist(b.ring) < 600 && (tilt < 90 || b.ring.some(([x, y]) => x * nx + y * ny > 0))));
     if (env.gs) for (const b of all) if (b.guessed) b.h *= env.gs;
-    if (env.hs) for (const b of all) if (b.id !== f.id) b.h = Math.max(1, b.h + env.hs * heightError(b)); // güven aralığı: tüm yükseklikler alt/üst sınırda
+    if (env.hs) for (const b of all) if (b.id !== f.id) { const [dn, up] = heightBounds(b); b.h = env.hs > 0 ? b.h + up : Math.max(1, b.h - dn); } // güven aralığı: tüm yükseklikler alt/üst sınırda
     m.set(key, all);
   }
   return m.get(key);
@@ -393,8 +408,10 @@ export function facadeDay(env, f, eye, y, m, d, step = 5, tz = null, tilt = 90) 
 // yükseltmek güneşi azaltabildiği için yön varsayılmaz: köşelerin en azı/en çoğu alınır (lo ≤ hi her zaman).
 // envs: { lo, hi } — kararlı nesneler (aday binalar env başına önbellekte). Güven: aralık 2 saati bulursa 0, en çok 100.
 // ponytail: dört köşe tam sınır değildir (tek tek bina kombinasyonları değil); sınır değil, duyarlılık göstergesi.
+// envs.base (isteğe bağlı): nominal sonuç da aralığa katılır, gösterilen değer her zaman aralığın içinde kalır.
 export function facadeRange(envs, f, eye, y, m, d, tz = null, tilt = 90) {
   const v = [envs.lo, envs.hi].flatMap(e => [Math.max(0.5, eye - 0.5), eye + 0.5].map(h => facadeDay(e, f, h, y, m, d, 5, tz, tilt).visH));
+  if (envs.base) v.push(facadeDay(envs.base, f, eye, y, m, d, 5, tz, tilt).visH);
   const lo = Math.min(...v), hi = Math.max(...v);
   return { lo, hi, conf: Math.round(100 * Math.min(1, Math.max(0, 1 - (hi - lo) / 2))) };
 }
