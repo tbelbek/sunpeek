@@ -1,9 +1,9 @@
 #!/bin/sh
 # Şehir bina verisini hazırlar (kırsal yok): BBBike şehir dosyaları + İsveç dosyasından şehir kutuları → yalnız binalar →
 # yollara düğüm konumları → <ad>.opl ve <ad>.poly. Ardından import.mjs yükler. Sunucuda (yeniden çalıştırmak güvenli):
-#   docker run --rm -v D:/Docker/sunpeek-osm:/d -v D:/Docker/sunpeek/api/osm-prep.sh:/prep.sh:ro alpine:3.22 sh /prep.sh
+#   docker run --rm -v D:/Docker/sunpeek-osm:/d -v D:/Docker/sunpeek/api/osm-prep.sh:/prep.sh:ro debian:bookworm-slim sh /prep.sh
 set -eu
-apk add -q osmium-tool curl
+apt-get update -qq && apt-get install -y -qq --no-install-recommends osmium-tool curl ca-certificates >/dev/null
 cd /d
 BBBIKE='London Paris Berlin Madrid Barcelona Muenchen Hamburg Wien Amsterdam Bruessel Copenhagen Stockholm Oslo Helsinki
 Goeteborg Malmoe Dublin Lisbon Porto Prag Warsaw Cracow Budapest Zuerich Genf Lyon Marseille Frankfurt Koeln Rotterdam
