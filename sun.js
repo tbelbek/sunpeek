@@ -187,8 +187,8 @@ function outward(b, i) {
 }
 const facade = (b, i, x, y) => { const [nx, ny] = outward(b, i); return { b, i, x: x + nx * 0.4, y: y + ny * 0.4, az: azOf(nx, ny) }; };
 
-// Dokunulan noktaya (x,y) en yakın bina kenarı (30 m içinde). Noktayı içeren bina önceliklidir.
-export function pickEdge(buildings, x, y) {
+// Dokunulan noktaya (x,y) en yakın bina kenarı (maxD m içinde). Noktayı içeren bina önceliklidir.
+export function pickEdge(buildings, x, y, maxD = 30) {
   const inside = buildings.filter(b => pip(x, y, b.ring)), list = inside.length ? inside : buildings;
   let best = null;
   for (const b of list) for (let i = 0; i < b.ring.length - 1; i++) {
@@ -197,7 +197,7 @@ export function pickEdge(buildings, x, y) {
     const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / L2)), cx = ax + t * dx, cy = ay + t * dy, dd = Math.hypot(x - cx, y - cy);
     if (!best || dd < best.dd) best = { dd, b, i, cx, cy };
   }
-  return best && best.dd < 30 ? facade(best.b, best.i, best.cx, best.cy) : null;
+  return best && best.dd < maxD ? facade(best.b, best.i, best.cx, best.cy) : null;
 }
 
 // Gözlemciden (0,0) bakış yönünde ilk çarpılan bina kenarı (≤ maxD m).
@@ -257,4 +257,14 @@ export function facadeDay(env, f, eye, y, m, d, step = 5, tz = null) {
   }
   const hours = st => slots.filter(s => st.includes(s.state)).length * step / 60;
   return { slots, windows, visH: hours(['vis']), frontH: hours(['vis', 'block', 'terrain']) };
+}
+
+// Yükseklik güveni: sonucu etkileyebilecek binalardan kaçının yüksekliği tahmini (OSM'de etiket yok).
+// Yalnız güneşin gelebileceği yarı düzlemdekiler sayılır: cephe için cephenin önü (dirAz = cephe yönü),
+// serbest nokta için güneşin geldiği taraf (kuzey yarımkürede güney). buildings origin'e göre yerel olmalı.
+export function heightConfidence(buildings, dirAz, target = null, maxD = 150) {
+  const sx = Math.sin(dirAz * rad), sy = Math.cos(dirAz * rad);
+  const rel = buildings.filter(b => b !== target && Math.hypot(b.cx, b.cy) < maxD && b.cx * sx + b.cy * sy > 0);
+  const g = rel.filter(b => b.guessed).length, share = rel.length ? g / rel.length : 0, tg = !!target?.guessed;
+  return { n: rel.length, guessed: g, share, targetGuessed: tg, level: share >= 0.75 ? 'low' : share >= 0.4 || tg ? 'mid' : 'ok' };
 }

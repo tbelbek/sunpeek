@@ -1,11 +1,14 @@
 # SunPeek
 
-**How much direct sun does this facade get?** Pick a building wall on the map, or point your phone at it, and SunPeek tells you how many hours of direct sun it gets today, at midsummer and at midwinter, with the exact time windows. It is built for house hunting: *does that balcony get afternoon sun in winter?*
+**→ [sunpeek.uk](https://sunpeek.uk)**
+
+**How much direct sun does this facade get?** Tap a building wall on the map, or point your phone at it, and SunPeek tells you how many hours of direct sun it gets today, at midsummer and at midwinter, with the exact time windows. It is built for house hunting: *does that balcony get afternoon sun in winter?*
 
 <img src="docs/screenshot.png" width="320" alt="SunPeek on a phone: rays coloured by sun/shade, season buttons, compass arrow and sky plot">
 
 ## Features
 
+- **Tap a wall, get the answer:** today / summer / winter hours as big tiles, time windows below. Tapping open ground (or dragging the pin) moves your own position.
 - **Facade sun hours** for the selected day, summer solstice and winter solstice, with time windows (e.g. `13:40–18:10`).
 - **Shadows from surrounding buildings** (OpenStreetMap footprints and heights, multipolygons and building parts), using exact ray–polygon intersection up to 400 m.
 - **Sloping ground and distant hills.** Building base elevation and a horizon profile (600 m – 8 km) come from the Copernicus GLO-90 elevation model.
@@ -15,6 +18,9 @@
 - **Sky plot** with the day's sun path, the horizon profile and the facade plane.
 - **Local time of the place**, not of your browser: the time zone is looked up per location, so checking a flat in another country gives correct times.
 - **History** of checked facades, kept on the device (localStorage).
+- **Height confidence ❗:** when most buildings that could shade the selected spot have no height in OpenStreetMap, a ❗ appears on the map; tapping it explains what was assumed and links to OpenStreetMap to fix it.
+- **First-run card** explaining each permission and why it's needed, before the browser asks. Reopen it any time with ℹ️.
+- **Retry:** if a data service doesn't respond, the app says so, offers ↻ Try again and retries once by itself. Successful downloads are cached on the device.
 - **Languages:** English, Svenska, Türkçe, Deutsch, Español, Français, picked automatically from the browser and switchable in the panel.
 
 ## How it works
@@ -69,7 +75,18 @@ Tests (Node 20+):
 node test.mjs
 ```
 
-They check the sun position against an independent NOAA implementation and published sunrise/sunset times, the shadow and terrain logic, time zones, and that every language has every key and placeholder.
+They check the sun position against an independent NOAA implementation and published sunrise/sunset times, the shadow and terrain logic, time zones, height confidence, and that every language has every key and placeholder.
+
+End-to-end tests (`e2e/run.js`) drive the real app in a phone-sized iframe: first-run card, all six languages, tapping walls, seasons and day animation (both hemispheres), polar night, compass and calibration, floor warning, the ❗ card, history, offline + retry, language switch and desktop layout. With the local server running, open any page on `http://localhost:8765`, evaluate `e2e/run.js` in the console, then `await E2E.run('tapping')` (names in `E2E.names`). They use live data services, so the first run is slow.
+
+## Permissions on phones
+
+| Permission | Why | Without it |
+|---|---|---|
+| 📍 Location | Puts you on the map; optional floor estimate from GPS altitude | Tap the map or type coordinates |
+| 🧭 Motion & orientation | Rotates the map with the phone, finds the house you're facing | Map stays north-up; tap walls instead |
+
+On iPhone the compass permission is asked when you tap **Allow & start** (or the arrow at the top). If you denied it, reload the page and tap the arrow. Location on iPhone: Settings › Privacy & Security › Location Services › Safari Websites.
 
 ## Privacy
 

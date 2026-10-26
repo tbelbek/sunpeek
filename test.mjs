@@ -1,6 +1,6 @@
 // node test.mjs — sun.js'i bağımsız bir NOAA (Python) uygulamasına ve sunrise-sunset.org değerlerine karşı doğrular.
 import assert from 'node:assert/strict';
-import { sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, height, maxFloor, zoned, hmIn, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, HZ_D, HZ_STEP } from './sun.js';
+import { sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, height, maxFloor, zoned, hmIn, heightConfidence, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, HZ_D, HZ_STEP } from './sun.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} != ${b}`);
 const utcHM = t => new Date(Math.floor(t / 60000) * 60000).toISOString().slice(11, 16); // saniyeyi keser
@@ -79,6 +79,8 @@ console.log('ok');
   const wall = el([[-20, -30], [20, -30], [20, -10], [-20, -10], [-20, -30]], { height: '40' }, 2);
   const { buildings } = localize([target], 60, 18), F = frame(60, 18);
   const tap = pickEdge(buildings, 0, 5.5), ray = rayEdge(buildings, 0);
+  assert.equal(pickEdge(buildings, 0, 3, 1), null, 'duvarın 2 m dışı, 1 m toleransta seçilmez');
+  near(pickEdge(buildings, 0, 3, 3).az, 180, 0.5, 'duvarın 2 m dışı, 3 m toleransta seçilir');
   for (const e of [tap, ray]) { near(e.az, 180, 0.5, 'cephe güneye'); near(e.y, 4.6, 0.01, 'cephe noktası 0,4 m dışarıda'); }
   const [flat, flon] = F.from(tap.x, tap.y), f = { lat: flat, lon: flon, az: tap.az, id: 1 };
   const noon = r => r.slots.reduce((a, s) => s.alt > a.alt ? s : a);
@@ -116,6 +118,18 @@ console.log('saat dilimi ok');
   assert.equal(few.buildings.find(b => b.id === 1).h, 12, 'az örnekte varsayılan kalır');
 }
 console.log('ortanca ok');
+
+// Güven: yalnız cephenin önündeki binalar sayılır
+{
+  const front = [0, 1, 2].map(i => el(sq(-20 + i * 20, -40, 5), { building: 'yes' }, 30 + i));          // güneyde, tahmini
+  const behind = [0, 1, 2, 3].map(i => el(sq(-30 + i * 20, 40, 5), { building: 'yes', height: '9' }, 40 + i)); // kuzeyde, ölçülü
+  const { buildings } = localize([...front, ...behind], 60, 18);
+  const south = heightConfidence(buildings, 180), north = heightConfidence(buildings, 0);
+  assert.deepEqual([south.n, south.guessed, south.level], [3, 3, 'low']);   // güneye bakan cephe: önündeki 3'ü de tahmini
+  assert.deepEqual([north.n, north.guessed, north.level], [4, 0, 'ok']);    // kuzeye bakan: önünde ölçülü binalar
+  assert.equal(heightConfidence(buildings, 0, { guessed: true }).level, 'mid', 'hedef binanın kendisi tahminiyse uyar');
+}
+console.log('güven ok');
 
 // Çeviriler: her dilde İngilizcedeki tüm anahtarlar ve aynı {yer tutucular} olmalı
 {

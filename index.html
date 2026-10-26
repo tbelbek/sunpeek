@@ -36,14 +36,26 @@
   #seasons { position: absolute; z-index: 1000; top: 50px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; max-width: calc(100vw - 12px); overflow-x: auto; scrollbar-width: none; padding: 2px; }
   #seasons button { min-height: 34px; padding: 4px 8px; border: 0; border-radius: 16px; background: #fffe; box-shadow: 0 1px 4px #0005; font-size: 13px; white-space: nowrap; }
   #seasons button.on { background: #ffe600; font-weight: 700; }
-  #pickhint { display: none; position: absolute; z-index: 1000; top: 92px; left: 50%; transform: translateX(-50%); background: #222d; color: #fff; padding: 6px 12px; border-radius: 6px; }
+  .chip { position: absolute; z-index: 1000; border: 0; border-radius: 18px; background: #fffe; box-shadow: 0 1px 6px #0005; padding: 6px 10px; font-weight: 700; cursor: pointer; }
+  #helpbtn { top: 8px; right: 8px; }
+  #conf { top: 92px; left: 8px; color: #8a4b00; background: #ffe9c7; } #conf.low { color: #fff; background: #c4211a; }
+  #modal { position: fixed; inset: 0; z-index: 2000; background: #0007; display: flex; align-items: center; justify-content: center; padding: 12px; }
+  #modal[hidden] { display: none; }
+  #card { background: #fff; border-radius: 12px; max-width: 460px; max-height: 90vh; overflow: auto; padding: 16px 18px; box-shadow: 0 6px 30px #0008; line-height: 1.4; }
+  #card h2 { margin: 0 0 6px; font-size: 19px; } #card h3 { margin: 14px 0 4px; font-size: 15px; } #card p { margin: 4px 0; }
+  #card .actions { display: flex; gap: 8px; margin-top: 14px; } #card .actions button { flex: 1; min-height: 44px; font-size: 15px; border-radius: 8px; }
+  #card .primary { background: #1a73e8; color: #fff; border: 0; font-weight: 700; }
+  .hint { background: #eef4ff; border-radius: 8px; padding: 10px; margin-top: 8px; }
+  .tiles { display: flex; gap: 6px; margin-top: 6px; } .tile { flex: 1; background: #fff8d6; border-radius: 8px; padding: 6px 4px; text-align: center; font-size: 12px; }
+  .tile b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
   @media (max-width: 600px) {
     #map { bottom: 42%; } /* panel haritanın üstünü kapatmasın */
     body.closed #map { bottom: 52px; } body.closed #panel { height: auto; }
     button { min-height: 44px; font-size: 15px; }
     #panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; height: 42%; max-height: none; border-radius: 12px 12px 0 0; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
     #sky { width: 150px; height: 150px; }
-    #seasons button { min-height: 32px; padding: 3px 7px; font-size: 12px; }
+    #seasons { gap: 3px; } #seasons button { min-height: 32px; padding: 3px 5px; font-size: 12px; }
+    #helpbtn { top: 8px; right: 8px; } #arrow { max-width: 55vw; }
   }
 </style>
 </head>
@@ -54,17 +66,12 @@
   <button data-s="today" data-t="today"></button><button data-s="spring" data-t="spring"></button><button data-s="summer" data-t="summer"></button>
   <button data-s="autumn" data-t="autumn"></button><button data-s="winter" data-t="winter"></button><button id="play" data-t-title="playTitle">▶</button>
 </div>
-<div id="pickhint" data-t="pickHint"></div>
+<button id="helpbtn" class="chip" aria-label="Help">ℹ️</button>
+<button id="conf" class="chip" style="display:none" aria-haspopup="dialog"><span aria-hidden="true">❗</span> <span id="conftxt"></span></button>
+<div id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="cardtitle"><div id="card"></div></div>
 <div id="panel"><details id="sheet" open><summary id="sum">☀️ SunPeek</summary>
-  <div class="row"><button id="geo" data-t="geo"></button><button id="cmp" data-t="cmp"></button><select id="lang" style="flex:0 0 auto" aria-label="Language"></select></div>
-  <div class="row"><button id="pick" data-t="pick"></button><button id="look" disabled data-t="look"></button></div>
-  <div id="pos" class="muted"></div>
-  <svg id="sky" viewBox="-115 -115 230 230"></svg>
-  <div id="rel" class="st" style="text-align:center"></div>
+  <div id="empty" class="hint" data-t="emptyHint"></div>
   <div id="house" style="display:none"></div>
-  <details id="histbox" style="margin-top:8px"><summary class="st"><span data-t="history"></span> (<span id="hcount">0</span>)</summary><div id="hist"></div></details>
-  <label data-t="coordLabel"></label>
-  <div class="row" style="margin-top:0"><input id="coord" type="text" placeholder="51.4779, -0.0015"><button id="go" style="flex:0 0 40px" data-t="go"></button></div>
   <div class="row">
     <div><label data-t="date"></label><input id="date" type="date"></div>
     <div><label><span data-t="floorLabel"></span> <span id="eyeM" class="muted"></span> <span id="katwarn" class="fix" style="display:none">❗</span></label>
@@ -73,28 +80,29 @@
   <div id="katmsg" class="fix" style="display:none;margin-top:4px"></div>
   <label><span data-t="time"></span> <span id="tval" class="st"></span></label>
   <input id="time" type="range" min="0" max="1439" step="5">
-  <table>
-    <tr><td data-t="riseSet"></td><td id="riseset"></td></tr>
-    <tr><td data-t="noon"></td><td id="noon"></td></tr>
-    <tr><td data-t="dayLen"></td><td id="len"></td></tr>
-    <tr><td data-t="altAz"></td><td id="altaz"></td></tr>
-  </table>
   <div id="now" class="st" style="margin-top:6px"></div>
-  <div class="muted" style="margin-top:8px">
-    <span class="leg" style="background:#1ad940"></span><span data-t="lgVis"></span>
-    <span class="leg" style="background:#f7332a;margin-left:6px"></span><span data-t="lgBlock"></span><br>
-    <span class="leg" style="background:#a0522d"></span><span data-t="lgTerrain"></span>
-    <span class="leg" style="background:#ddd;margin-left:6px"></span><span data-t="lgBehind"></span><br>
-    <span class="leg" style="background:#ff9900"></span><span data-t="lgRiseSet"></span>
-    <span class="leg" style="background:#ffe600;margin-left:6px"></span><span data-t="lgSel"></span>
-    <span class="leg" style="background:#4af;margin-left:6px"></span><span data-t="lgHeading"></span><br>
-    <span data-t="note"></span><br>
-    <span id="bstat"></span><br><span id="gstat"></span>
-  </div>
+  <div class="row"><button id="geo" data-t="geo"></button><button id="cmp" data-t="cmp"></button><button id="look" disabled data-t="look"></button></div>
+  <div id="gstat" class="muted" style="margin-top:4px"></div>
+  <div id="pos" class="muted"></div>
+  <svg id="sky" viewBox="-115 -115 230 230"></svg>
+  <div id="rel" class="st" style="text-align:center"></div>
+  <details id="histbox" style="margin-top:8px"><summary class="st"><span data-t="history"></span> (<span id="hcount">0</span>)</summary><div id="hist"></div></details>
+  <details id="morebox" style="margin-top:8px"><summary class="st" data-t="more"></summary>
+    <label data-t="coordLabel"></label>
+    <div class="row" style="margin-top:0"><input id="coord" type="text" placeholder="51.4779, -0.0015"><button id="go" style="flex:0 0 40px" data-t="go"></button></div>
+    <div class="row"><select id="lang" aria-label="Language"></select></div>
+    <table>
+      <tr><td data-t="riseSet"></td><td id="riseset"></td></tr>
+      <tr><td data-t="noon"></td><td id="noon"></td></tr>
+      <tr><td data-t="dayLen"></td><td id="len"></td></tr>
+      <tr><td data-t="altAz"></td><td id="altaz"></td></tr>
+    </table>
+    <div id="bstat" class="muted" style="margin-top:6px"></div>
+  </details>
 </details></div>
 <script type="module">
 import { t as tr, lang, LANGS, dirs, applyStatic } from './i18n.js';
-import { zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt } from './sun.js';
+import { zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip } from './sun.js';
 
 const $ = id => document.getElementById(id);
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
@@ -109,7 +117,7 @@ const cone = L.polygon([], { color: '#4af', weight: 1, fillOpacity: 0.25, intera
 let acc = null, pt = null, accM = null, gAlt = null, gAltAcc = null, B = { buildings: [], own: [] }, req = 0;
 let last = null; // son çekim: {el, ground, hz, lat, lng} — binalar + zemin kotu + ufuk
 let cmpState = 'off'; // off | asking | waiting | nodata | denied | none — üstteki okta görünür
-let raw = null, heading = null, headAcc = null, compassOn = false, watchId = null, picking = false, house = null, lastRender = 0, rotateOn = true, wake = null;
+let raw = null, heading = null, headAcc = null, compassOn = false, watchId = null, house = null, lastRender = 0, rotateOn = true, wake = null;
 let katSrc = null, katFix = null; // katSrc 'gps': kat GPS'ten geldi; katFix: önerilen düzeltme
 let cmpOff = +(localStorage.getItem('cmpOff') || 0); // pusula düzeltmesi (manyetik sapma + cihaz hatası), duvara göre kalibre edilir
 
@@ -190,7 +198,7 @@ function draw() {
   $('noon').textContent = ev.noon ? `${hm(ev.noon)} · ${ev.maxAlt.toFixed(1)}°` : '—';
   const len = ev.sunrise && ev.sunset ? (ev.sunset - ev.sunrise) / 60000 : ev.polar === 'day' ? 1440 : ev.polar ? 0 : null;
   $('len').textContent = len == null ? '—' : tr('dayLenFmt', { h: Math.floor(len / 60), m: Math.round(len % 60) });
-  drawHouse(); drawHeading();
+  drawHouse(); drawHeading(); drawConf();
 }
 
 // Kat, binanın kat sayısıyla uyuşuyor mu? Cephe seçiliyse o bina, değilse içinde durduğun bina (en yüksek parça).
@@ -222,16 +230,20 @@ function facadeCached(key, fn) { key += '|' + kat() + '|' + TZ; return (house.ca
 
 function drawHouse() {
   const el = $('house');
+  $('empty').style.display = house ? 'none' : '';
   if (!house) { el.style.display = 'none'; return; }
   const [y] = ymd(), fmt = r => r.windows.map(([a, b]) => `${hm(a)}–${hm(b)}`).join(', ') || tr('none');
-  const row = (name, r) => `<tr><td>${name}</td><td>${tr('hours', { h: r.visH.toFixed(1) })}</td></tr><tr><td colspan="2" class="muted" style="text-align:left">${fmt(r)}</td></tr>`;
   const S = SEASON(house.lat), on = md => { const [mm, dd] = md.split('-').map(Number); return facadeCached(`${y}-${md}`, () => facadeDay(house.env, house, eye(), y, mm, dd, 5, TZ)); };
   const sum = on(S.summer), win = on(S.winter);
   el.style.display = '';
   saveHist({ day: house.day, sum, win, fmt });
-  el.innerHTML = `<div class="st">${tr('facadeHdr', { az: house.az.toFixed(0), dir: dirName(house.az) })}</div>
+  // Önce cevap: üç büyük kutucuk (seçili gün / yaz / kış), altında saat aralıkları
+  const [, mo, da] = ymd(), dayLbl = $('date').value === todayStr ? tr('today') : dm(`${pad(mo)}-${pad(da)}`);
+  const tile = (lbl, r) => `<div class="tile"><b>${tr('hours', { h: r.visH.toFixed(1) })}</b>${lbl}</div>`;
+  el.innerHTML = `<div class="tiles">${tile(dayLbl, house.day)}${tile(tr('summerSol', { d: dm(S.summer) }), sum)}${tile(tr('winterSol', { d: dm(S.winter) }), win)}</div>
+    <div class="muted" style="margin-top:4px">${dayLbl}: ${fmt(house.day)}<br>${tr('summer')}: ${fmt(sum)}<br>${tr('winter')}: ${fmt(win)}</div>
+    <div class="st" style="margin-top:6px">${tr('facadeHdr', { az: house.az.toFixed(0), dir: dirName(house.az) })}</div>
     <div class="muted">${tr('facadeSub', { h: house.h.toFixed(0), est: house.guessed ? tr('estimated') : '', k: kat(), e: eye().toFixed(1) })}</div>
-    <table>${row(tr('selDay'), house.day)}${row(tr('summerSol', { d: dm(S.summer) }), sum)}${row(tr('winterSol', { d: dm(S.winter) }), win)}</table>
     <div class="row"><button id="unpick">${tr('unpick')}</button>${compassOn ? `<button id="calib">${tr('calib')}</button>` : ''}</div>
     ${compassOn ? `<div class="muted">${tr('calibHelp', { c: (cmpOff >= 0 ? '+' : '') + cmpOff.toFixed(0) })}</div>` : ''}`;
   $('unpick').onclick = () => { house = null; drawBuildings(); draw(); };
@@ -260,13 +272,13 @@ function saveHist({ day, sum, win, fmt }) {
   if (!e.addr) lookupAddr(e);
 }
 // Nominatim: kayıt başına tek istek (kullanım politikası ≤1/sn, toplu sorgu yok)
-async function lookupAddr(e) {
+async function lookupAddr(e, retried = false) {
   try {
     const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=${lang}&lat=${e.lat}&lon=${e.lon}`, { signal: AbortSignal.timeout(10000) });
     const a = (await r.json()).address ?? {};
     const addr = [[a.road, a.house_number].filter(Boolean).join(' '), a.city ?? a.town ?? a.village ?? a.suburb].filter(Boolean).join(', ');
     if (addr) putHist(hist().map(x => x.key === e.key ? { ...x, addr } : x));
-  } catch {}
+  } catch { if (!retried) setTimeout(() => lookupAddr(e, true), 5000); } // yanıt yoksa bir kez daha dene
 }
 function renderHist() {
   const list = hist();
@@ -388,21 +400,33 @@ async function fetchElev(pts, key) {
   return out;
 }
 // Son çekimin merkezinden 120 m içindeysek aynı veriyi yeni noktaya göre yeniden hesapla (yürürken her adımda çekme).
-async function refreshBuildings() {
-  if (last && pt.distanceTo([last.lat, last.lng]) < 120) { B = localize(last.el, pt.lat, pt.lng, last.ground); statB(); drawBuildings(); return draw(); }
+// Yanıt vermeyen servis: başarısız kısım kaydedilmez (sonraki harekette yeniden denenir), görünür uyarı + ↻ düğmesi,
+// 8 sn sonra bir kez de kendiliğinden yeniden denenir. Başarılı parçalar localStorage'dan gelir, tekrar indirilmez.
+let autoRetry = null;
+async function refreshBuildings(force = false, attempt = 0) {
+  if (!force && last?.complete && pt.distanceTo([last.lat, last.lng]) < 120) { B = localize(last.el, pt.lat, pt.lng, last.ground); statB(); drawBuildings(); return draw(); }
+  clearTimeout(autoRetry);
   // Çekim merkezi ~100 m'lik ızgaraya oturtulur: önbellek isabeti için; 400 m yarıçap yine de bolca kapsar
   const id = ++req, lat = +pt.lat.toFixed(3), lng = +pt.lng.toFixed(3);
   $('bstat').textContent = tr('loading');
+  if ($('retry')) $('gstat').textContent = tr('loading');
   // Ufuk ~100 m'lik ızgaraya oturtulur: 600 m+ uzaklıkta fark yok, yakın yerlere dönünce önbellekten gelir
   const hlat = +lat.toFixed(3), hlng = +lng.toFixed(3);
   const [el, gr, hz] = await Promise.allSettled([fetchEls(lat, lng), fetchElev(gridPoints(lat, lng), `zg:${lat.toFixed(4)},${lng.toFixed(4)}`),
     fetchElev(horizonPoints(hlat, hlng), `hz:${hlat},${hlng}`)]);
   if (id !== req) return;
-  last = { el: el.value ?? [], ground: gr.value ? makeGround(lat, lng, gr.value) : null, hz: hz.value ? makeHorizon(hz.value) : null, lat, lng };
+  last = { el: el.value ?? [], ground: gr.value ? makeGround(lat, lng, gr.value) : null, hz: hz.value ? makeHorizon(hz.value) : null, lat, lng,
+           complete: el.status === 'fulfilled' && !!gr.value && !!hz.value };
   B = localize(last.el, pt.lat, pt.lng, last.ground); statB();
-  if (el.status === 'rejected') $('bstat').textContent = tr('bFail', { e: el.reason.message });
-  if (!last.ground) $('bstat').textContent += tr('gFail', { e: gr.reason.message });
-  if (!last.hz) $('bstat').textContent += tr('hFail', { e: hz.reason.message });
+  const fails = [];
+  if (el.status === 'rejected') fails.push(tr('bFail', { e: el.reason.message }));
+  if (!last.ground) fails.push(tr('gFail', { e: gr.reason.message }).trim());
+  if (!last.hz) fails.push(tr('hFail', { e: hz.reason.message }).trim());
+  if (fails.length) {
+    $('gstat').innerHTML = `${esc(fails.join(' '))} <button id="retry">${tr('retry')}</button>`;
+    $('retry').onclick = () => refreshBuildings(true, 1);
+    if (attempt === 0) autoRetry = setTimeout(() => refreshBuildings(true, 1), 8000);
+  } else if ($('retry')) $('gstat').textContent = '';
   drawBuildings(); draw();
 }
 function statB() {
@@ -419,7 +443,6 @@ function setHouse(e) {
   $('gstat').textContent = tr('facadePicked');
   drawBuildings(); draw();
 }
-$('pick').onclick = () => { picking = !picking; $('pick').classList.toggle('on', picking); $('pickhint').style.display = picking ? 'block' : 'none'; };
 $('look').onclick = () => {
   if (heading == null || !last) return;
   setHouse(rayEdge(B.buildings, heading)); // pusula ±15° şaşabilir: sonuç vurgulanır, gerekirse dokunarak düzeltilir
@@ -509,11 +532,6 @@ function compassStop() {
 $('cmp').onclick = () => compassOn ? compassStop() : requestCompass();
 // Üstteki ok: pusula kapalıysa açar; açıksa yön-yukarı ↔ kuzey-yukarı
 $('arrow').onclick = () => { if (!compassOn) return requestCompass(); rotateOn = !rotateOn; drawHeading(); };
-// Telefonda pusula kendiliğinden açılır: izin gerekmiyorsa hemen, iOS'ta ilk dokunuşta (izin bir dokunuş içinde istenmeli)
-if (matchMedia('(pointer: coarse)').matches && window.DeviceOrientationEvent) {
-  if (typeof DeviceOrientationEvent.requestPermission !== 'function') requestCompass();
-  else document.addEventListener('click', () => { if (cmpState === 'off') requestCompass(); }, { capture: true, once: true });
-}
 document.addEventListener('visibilitychange', () => { if (compassOn && document.visibilityState === 'visible') navigator.wakeLock?.request('screen').then(w => wake = w).catch(() => {}); });
 $('sheet').ontoggle = () => { document.body.classList.toggle('closed', !$('sheet').open); map.invalidateSize(); };
 $('gpskat').onclick = () => {
@@ -532,12 +550,16 @@ $('go').onclick = () => {
   else alert(tr('badCoord'));
 };
 $('coord').onkeydown = e => { if (e.key === 'Enter') $('go').click(); };
+// Binaya dokun = o binanın en yakın duvarı seçilir; açık alana dokun = kendi konumunu oraya taşı (iğne de sürüklenebilir)
 map.on('click', e => {
-  if (!picking) return setPoint(e.latlng.lat, e.latlng.lng, false);
-  picking = false; $('pick').classList.remove('on'); $('pickhint').style.display = 'none';
-  if (!last) return;
-  const [x, y] = frame(pt.lat, pt.lng).to(e.latlng.lat, e.latlng.lng);
-  setHouse(pickEdge(B.buildings.concat(B.own), x, y));
+  if (pt && last) {
+    const [x, y] = frame(pt.lat, pt.lng).to(e.latlng.lat, e.latlng.lng), all = B.buildings.concat(B.own), hit = all.filter(b => pip(x, y, b.ring));
+    if (hit.length) return setHouse(pickEdge(hit, x, y));
+    // parmak duvarın biraz dışına düştüyse: ekranda ~14 px içindeki duvar da seçilir
+    const snap = pickEdge(all, x, y, 14 * 40075016.686 * Math.cos(pt.lat * Math.PI / 180) / 2 ** (map.getZoom() + 8));
+    if (snap) return setHouse(snap);
+  }
+  setPoint(e.latlng.lat, e.latlng.lng, false);
 });
 marker.on('dragend', () => { const p = marker.getLatLng(); setPoint(p.lat, p.lng, false); });
 map.on('zoomend', draw);
@@ -574,7 +596,63 @@ seasonMark();
 $('kat').oninput = () => { katSrc = null; draw(); };
 $('katwarn').onclick = $('katmsg').onclick = e => { e.preventDefault(); if (katFix == null) return; $('kat').value = katFix; katSrc = null; draw(); };
 setInterval(drawSky, 60000); // "şu an" göstergesi
-locate();
+// ---------- tanıtım / yardım kartı, yükseklik güveni ----------
+const legend = [['#1ad940', 'lgVis'], ['#f7332a', 'lgBlock'], ['#a0522d', 'lgTerrain'], ['#ddd', 'lgBehind'], ['#ff9900', 'lgRiseSet'], ['#ffe600', 'lgSel'], ['#4af', 'lgHeading']]
+  .map(([c, k]) => `<span style="white-space:nowrap;margin-right:8px"><span class="leg" style="background:${c}"></span>${tr(k)}</span>`).join(' ');
+function openCard(html) { $('card').innerHTML = html; $('modal').hidden = false; $('card').querySelector('button')?.focus(); }
+function closeCard() { $('modal').hidden = true; }
+$('modal').onclick = e => { if (e.target === $('modal')) closeCard(); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal').hidden) closeCard(); });
+// İzinler kullanım anında değil, nedenleri anlatıldıktan sonra tek düğmeyle istenir (iOS izni dokunuşun içinde ister).
+function showIntro(help = false) {
+  openCard(`<h2 id="cardtitle">${help ? tr('helpTitle') : tr('introTitle')}</h2><p>${tr('introLead')}</p>
+    <p>${tr('step1')}<br>${tr('step2')}<br>${tr('step3')}</p>
+    <h3>${tr('permTitle')}</h3><p>${tr('permLoc')}</p><p>${tr('permMotion')}</p><p class="muted">${tr('permData')}</p><p class="muted">${tr('permDenied')}</p>
+    ${help ? `<h3>${tr('legendTitle')}</h3><p class="muted">${legend}</p><h3>${tr('aboutTitle')}</h3><p class="muted">${tr('note')}</p>` : ''}
+    <div class="actions">${compassOn && pt ? '' : `<button class="primary" id="introGo">${tr('allowStart')}</button>`}<button id="introSkip">${help ? tr('close') : tr('skip')}</button></div>`);
+  $('introGo')?.addEventListener('click', () => { localStorage.setItem('introSeen', 1); requestCompass(); locate(); closeCard(); });
+  $('introSkip').onclick = () => { localStorage.setItem('introSeen', 1); closeCard(); if (!pt) setPoint(51.4779, -0.0015); };
+}
+$('helpbtn').onclick = () => showIntro(true);
+// ❗ Yükseklik güveni: gölge düşürebilecek binaların çoğunun yüksekliği tahminiyse haritada uyar
+let conf = null;
+function drawConf() {
+  conf = null;
+  if (pt && last) {
+    // seçili cepheye / bina listesine bağlı önbellek: kaydırıcı ve oynatma her karede yeniden hesaplatmasın
+    if (house) conf = house.conf ??= (() => {
+      const L0 = localize(house.env.el, house.lat, house.lon, house.env.ground), all = L0.buildings.concat(L0.own);
+      return heightConfidence(all, house.az, all.find(b => b.id === house.id));
+    })();
+    else conf = B.conf ??= heightConfidence(B.buildings, pt.lat >= 0 ? 180 : 0);
+  }
+  const show = conf && conf.level !== 'ok';
+  $('conf').style.display = show ? '' : 'none';
+  if (!show) return;
+  $('conf').classList.toggle('low', conf.level === 'low');
+  $('conftxt').textContent = tr(conf.level === 'low' ? 'confLow' : 'confMid');
+  $('conf').setAttribute('aria-label', tr('confTitle'));
+}
+$('conf').onclick = () => {
+  if (!conf) return;
+  const o = house ? { lat: house.lat, lng: house.lon } : pt;
+  openCard(`<h2 id="cardtitle">❗ ${tr('confTitle')}</h2><p>${tr('confBody', { g: conf.guessed, n: conf.n })}</p>
+    ${conf.targetGuessed ? `<p>${tr('confTarget')}</p>` : ''}<p>${tr('confFix')}</p>
+    <p><a href="https://www.openstreetmap.org/edit#map=19/${o.lat.toFixed(5)}/${o.lng.toFixed(5)}" target="_blank" rel="noopener">${tr('confEdit')} ↗</a></p>
+    <div class="actions"><button id="confClose">${tr('close')}</button></div>`);
+  $('confClose').onclick = closeCard;
+};
+
+// Açılış: ilk ziyarette tanıtım kartı (izinler oradan istenir). Sonraki ziyaretlerde izin zaten verilmişse doğrudan başla.
+// E2E test kancası (yalnız ?e2e ile): iç duruma salt okunur erişim, e2e/run.js kullanır
+if (new URLSearchParams(location.search).has('e2e')) window.__sp = { map, frame, get pt() { return pt; }, get house() { return house; }, get B() { return B; } };
+drawHeading(); // üstteki ok, konum gelmeden de durumunu göstersin
+if (!localStorage.getItem('introSeen')) showIntro();
+else {
+  navigator.permissions?.query({ name: 'geolocation' }).then(p => p.state === 'granted' ? locate() : setPoint(51.4779, -0.0015)).catch(() => locate()) ?? locate();
+  // izin gerektirmeyen cihazlarda (Android) pusula kendiliğinden açılır; iOS'ta üstteki oka dokunulur
+  if (matchMedia('(pointer: coarse)').matches && window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission !== 'function') requestCompass();
+}
 </script>
 </body>
 </html>
