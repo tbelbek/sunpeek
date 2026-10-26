@@ -1,14 +1,15 @@
 // Kalıcı önbellek (IndexedDB): bina hücreleri, arazi karoları, ışınım arşivi. localStorage 5 MB ile sınırlı ve senkron.
 // Her kayıt { t: kayıt zamanı, v: değer }; tazeliği çağıran karar verir (TTL), eskiler açılışta budanır.
 // IndexedDB yoksa (gizli pencere, eski tarayıcı) önbellek sessizce devre dışı kalır, uygulama ağdan çalışır.
-// IndexedDB açılışı hata vermeden takılı kalabiliyor (bekleyen silme, bozuk depolama, bazı gizli pencereler): her işlem 3 sn'de
-// vazgeçer. Açılış takılırsa önbellek bu oturumda kapalı kalır; yoksa sayfa "yükleniyor"da sonsuza kadar bekliyordu.
+// IndexedDB açılışı hata vermeden takılı kalabiliyor (bekleyen silme, bozuk depolama, bazı gizli pencereler): açılış 1 sn'de, her
+// işlem 3 sn'de vazgeçer. Açılış takılırsa önbellek bu oturumda kapalı kalır; yoksa sayfa "yükleniyor"da sonsuza kadar bekliyordu.
+// Açılış sınırı kısa: ilk veri isteği önbellek cevabını bekler, normal açılış birkaç ms sürer.
 const within = (p, ms = 3000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('idb timeout')), ms))]);
 const open = () => within(new Promise((res, rej) => {
   const r = indexedDB.open('sunpeek', 1);
   r.onupgradeneeded = () => r.result.createObjectStore('c');
   r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); r.onblocked = () => rej(new Error('idb blocked'));
-}));
+}), 1000);
 let db = null;
 const tx = async (mode, fn) => {
   db ??= open();
