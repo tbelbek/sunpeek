@@ -17,7 +17,9 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
     if (!consent && clear) localStorage.setItem('stats', '0'); // testlerde istatistik betiği yüklenmesin, izin kutusu araya girmesin
     for (const [k, v] of Object.entries(storage)) localStorage.setItem(k, v);
     const f = document.createElement('iframe');
-    f.style.cssText = `width:${w}px;height:${h}px;position:fixed;left:-${w + 50}px;top:0;border:0`;
+    // ekran içinde ama görünmez: Chrome ekran dışındaki iframe'lerde animasyon karesini (rAF) kısıyor; pusula dönüşü ve harita
+    // kaydırma animasyonu aralıklı düşüyordu
+    f.style.cssText = `width:${w}px;height:${h}px;position:fixed;left:0;top:0;border:0;pointer-events:none;z-index:2147483647;background:#fff`; /* görünür ve en üstte: ekran dışı, saydam ya da arkada kalan iframe kısılıyor */
     f.src = '/?e2e&' + q + Math.random();
     document.body.appendChild(f);
     await new Promise(r => f.onload = r);
@@ -150,11 +152,14 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
       const B = a.sp.B.buildings; let spot = null;
       for (let k = 0; k < 400 && !spot; k++) { const x = (Math.random() - 0.5) * 300, y = (Math.random() - 0.5) * 300; if (B.every(q => Math.hypot(q.cx - x, q.cy - y) > 40)) spot = [x, y]; }
       if (spot) {
-        const before = a.sp.pt; a.sp.map.setZoom(17); await sl(500);
+        // programla yakınlaştırma bitmeden dokunulursa, geç başlayan yakınlaştırma animasyonu haritayı eski merkeze geri götürür
+        const before = a.sp.pt, zoomed = new Promise(r => { a.sp.map.once('zoomend', r); setTimeout(r, 4000); }); a.sp.map.setZoom(17); await zoomed; await sl(300);
         const ll = a.toLatLng(...spot);
         await a.tapLatLng(...ll); await sl(900);
         check('dokunma: açık alana dokununca konum taşındı', a.sp.pt.distanceTo(before) > 20, a.sp.pt.distanceTo(before));
-        check('dokunma: harita dokunulan yere ortalandı', a.sp.map.getCenter().distanceTo(ll) < 15, a.sp.map.getCenter().distanceTo(ll));
+        await until(() => a.sp.map.getCenter().distanceTo(ll) < 15, 4000); // kaydırma animasyonu: sabit bekleme yerine varana kadar
+        check('dokunma: harita dokunulan yere ortalandı', a.sp.map.getCenter().distanceTo(ll) < 15,
+          `merkez→dokunulan ${Math.round(a.sp.map.getCenter().distanceTo(ll))} m, nokta→dokunulan ${Math.round(a.sp.pt.distanceTo(ll))} m, merkez→nokta ${Math.round(a.sp.map.getCenter().distanceTo(a.sp.pt))} m, duvar ${!!a.sp.house}, kaynak ${a.sp.last?.src}, zoomAnim ${a.sp.map._animatingZoom}`);
       } else check('dokunma: açık alan bulunamadı (atlandı)', true);
       noErr('dokunma', a); a.close();
     },
@@ -252,7 +257,7 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
       a.$('conf').click(); await sl(200);
       const c = a.$('card').innerText, link = a.$('card').querySelector('a')?.href || '';
       // duvar seçiliyken: birleşik güven kartı, her etken ayrı satırda (duyarlılık, gölge yapan binaların verisi, kaynak, dahil olmayanlar)
-      check('güven: etken satırları ve OSM linki', a.d.querySelectorAll('#card .tf li').length === 4 && /OpenStreetMap/.test(c) && /openstreetmap\.org\/edit#map=19\//.test(link), c.slice(0, 160) + ' ' + link);
+      check('güven: etken satırları ve OSM linki', a.d.querySelectorAll('#card .tf li').length >= 4 && /OpenStreetMap/.test(c) && /openstreetmap\.org\/edit#map=19\//.test(link), c.slice(0, 160) + ' ' + link);
       check('güven: link yeni sekmede, noopener', a.$('card').querySelector('a')?.rel.includes('noopener'));
       a.$('confClose').click(); await sl(100);
       check('güven: kapat', !a.$('modal').open);
@@ -284,7 +289,9 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
       await a.go(51.4779, -0.0015);
       const realFetch = a.win.fetch;
       a.win.fetch = () => Promise.reject(new Error('offline'));
-      await a.go(+(51.40 + Math.random() * 0.1).toFixed(4), +(-0.20 + Math.random() * 0.1).toFixed(4)); // her koşuda önbellekte olmayan bina hücresi
+      // önbellekte olmayan bir şehir noktası: rastgele şehir + ±5 km (bağlantı geri gelince binalar yüklenebilsin diye şehir)
+      const [cla, clo] = [[48.85, 2.35], [52.52, 13.40], [40.42, -3.70], [41.90, 12.50], [48.21, 16.37], [50.08, 14.44], [52.23, 21.01], [47.50, 19.04]][Math.floor(Math.random() * 8)];
+      await a.go(+(cla + (Math.random() - 0.5) * 0.09).toFixed(4), +(clo + (Math.random() - 0.5) * 0.13).toFixed(4));
       await until(() => a.$('retry'), 15000);
       const t = gtxt(a);
       check('ağ hatası: görünür bina mesajı', /Couldn't load buildings/.test(t), t);
@@ -501,6 +508,68 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
         check(`düzen ${lang} ${w}x${h}: çakışma yok, mevsimler sığar`, !ov.length && s.scrollWidth <= s.clientWidth + 1, ov.join(' ') + ` mevsim ${s.scrollWidth}/${s.clientWidth}`);
         a.close();
       }
+    },
+    // Paylaşılan bağlantı aynı duvarı ve katı açar (otomatik seçilenden farklı bir duvar seçilip paylaşılır)
+    async shareLink() {
+      const a = await open({ lang: 'en' });
+      await a.go(57.6935, 11.9575); await until(() => a.sp.house, 8000);
+      const auto = Math.round(a.sp.house.az), own = a.sp.B.own[0] ?? a.nearestBuilding();
+      // aynı binanın, otomatik seçilene ters yöndeki en uzun duvarının ortasına dokun
+      let best = null; for (let i = 0; i < own.ring.length - 1; i++) { const [x1, y1] = own.ring[i], [x2, y2] = own.ring[i + 1], L = Math.hypot(x2 - x1, y2 - y1);
+        const az = (Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI + 360) % 360; if (L > 8 && (!best || L > best.L)) best = { x: (x1 + x2) / 2, y: (y1 + y2) / 2, L }; }
+      const walls = []; for (let i = 0; i < own.ring.length - 1; i++) { const [x1, y1] = own.ring[i], [x2, y2] = own.ring[i + 1]; if (Math.hypot(x2 - x1, y2 - y1) > 8) walls.push([(x1 + x2) / 2, (y1 + y2) / 2]); }
+      for (const [x, y] of walls) { await a.tapLatLng(...a.toLatLng(x, y)); if (a.sp.house && Math.abs(((a.sp.house.az - auto + 540) % 360) - 180) > 45) break; }
+      const chosen = { az: Math.round(a.sp.house.az), lat: a.sp.house.lat, lon: a.sp.house.lon };
+      a.$('katplus').click(); a.$('katplus').click(); a.$('katplus').click(); await sl(300);
+      let copied = null; a.win.navigator.share = undefined; a.win.navigator.clipboard.writeText = async t => { copied = t; };
+      a.$('sharebtn').click(); await sl(300);
+      const url = copied?.match(/https?:\/\/\S+/)?.[0] ?? '';
+      check('paylaş: bağlantı konum, yön ve kat içerir', /\?at=-?\d+\.\d+,-?\d+\.\d+&az=\d+&f=3$/.test(url) && /SunPeek/.test(copied), copied);
+      check('paylaş: farklı bir duvar seçildi', Math.abs(((chosen.az - auto + 540) % 360) - 180) > 45, `${auto} → ${chosen.az}`);
+      a.close();
+      const b = await open({ lang: 'en', q: url.split('?')[1] + '&' });
+      await until(() => b.sp.house, 10000);
+      const h = b.sp.house, dist = h ? b.sp.frame(chosen.lat, chosen.lon).to(h.lat, h.lon) : [99, 99];
+      check('paylaş: bağlantı aynı duvarı açar', h && Math.abs(((h.az - chosen.az + 540) % 360) - 180) < 3 && Math.hypot(...dist) < 2, h && `${Math.round(h.az)} vs ${chosen.az}, ${Math.hypot(...dist).toFixed(1)} m`);
+      check('paylaş: bağlantı aynı katı açar', b.$('kat').value === '3', b.$('kat').value);
+      check('PDF: düğme var', !!b.$('printbtn'));
+      noErr('paylaş', b); b.close();
+    },
+    // Güneş şu an nerede: kenarda, güneşin gerçek yönünde; harita dönünce kayar; Daha fazla'dan kapatılır ve tercih kalır
+    async sunMark() {
+      const a = await open({ lang: 'en' });
+      await a.go(57.6935, 11.9575); await sl(300);
+      const m = a.$('sunmark'), ang = () => { const r = m.getBoundingClientRect(), mr = a.$('map').getBoundingClientRect(), ph = a.win.innerWidth <= 700;
+        const L = mr.left + 26, R = mr.right - (ph ? 80 : 70), T = mr.top + (ph ? 214 : 128), B = mr.bottom - 34;
+        return (Math.atan2(r.left + r.width / 2 - (L + R) / 2, -(r.top + r.height / 2 - (T + B) / 2)) * 180 / Math.PI + 360) % 360; };
+      const sun = a.win.__sp ? (await import('/sun.js')).sunpos(a.sp.pt.lat, a.sp.pt.lng, new Date()) : null;
+      const d = (x, y) => Math.abs(((x - y + 540) % 360) - 180);
+      check('güneş simgesi: görünür, yönü güneşin azimutu', !m.hidden && sun && d(ang(), sun.az) < 25, `${Math.round(ang())} vs ${sun && Math.round(sun.az)}`);
+      a.sp.map.setBearing(90); await sl(200);
+      check('güneş simgesi: harita dönünce kayar', d(ang(), sun.az + 90) < 25, `${Math.round(ang())} vs ${Math.round((sun.az + 90) % 360)}`);
+      a.sp.map.setBearing(0);
+      a.$('sunmarkchk').click(); await sl(100);
+      check('güneş simgesi: kapatılır, tercih saklanır', m.hidden && a.win.localStorage.getItem('sunmark') === '0');
+      a.$('sunmarkchk').click(); await sl(100);
+      check('güneş simgesi: yeniden açılır', !m.hidden);
+      noErr('güneş simgesi', a); a.close();
+    },
+    // Ağaç uyarısı (ilk aşama): güneşli tarafta 30 m içinde ağaç varsa uyarı, güven kartında satır, haritada nokta; arkadaki sayılmaz
+    async treeWarning() {
+      const a = await open({ lang: 'en' });
+      let place = 'front';
+      const real = a.win.fetch; a.win.fetch = (u, o) => { if (!String(u).includes('/api/trees')) return real(u, o);
+        const h = a.sp.house, k = place === 'front' ? 10 : -10, n = [Math.sin(h.az * Math.PI / 180) * k, Math.cos(h.az * Math.PI / 180) * k], [la, lo] = a.sp.frame(h.lat, h.lon).from(...n);
+        return Promise.resolve(new a.win.Response(JSON.stringify([{ t: 'tree', lat: la, lon: lo, h: null }]), { status: 200, headers: { 'content-type': 'application/json' } })); };
+      await a.go(57.6935, 11.9575); await until(() => a.sp.house, 8000); await until(() => a.d.querySelector('.treewarn'), 4000);
+      check('ağaç: önde 10 m ağaç → uyarı', !!a.d.querySelector('.treewarn'), a.$('fac').innerText.slice(0, 120));
+      check('ağaç: haritada yeşil nokta', [...a.d.querySelectorAll('.leaflet-overlay-pane path')].some(p => p.getAttribute('stroke') === '#16a34a'));
+      a.$('confchip').click(); await sl(300);
+      check('ağaç: güven kartında satır, en çok orta', /tree/i.test(a.d.querySelector('#card .tf')?.innerText ?? '') && !/high/i.test(a.d.querySelector('#card p')?.innerText ?? ''), a.d.querySelector('#card .tf')?.innerText);
+      a.$('confClose')?.click();
+      place = 'back'; a.$('unpick').click(); await sl(200); await a.go(57.6935, 11.9575); await until(() => a.sp.house, 8000); await sl(800);
+      check('ağaç: duvarın arkasındaki ağaç uyarı vermez', !a.d.querySelector('.treewarn'));
+      noErr('ağaç', a); a.close();
     },
     // 14. Masaüstü düzeni
     async desktop() {

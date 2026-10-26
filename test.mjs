@@ -304,3 +304,25 @@ console.log('güven kalibrasyonu ok');
   delete globalThis.indexedDB;
 }
 console.log('indexeddb zaman aşımı ok');
+
+// Paylaşılan duvar: nokta komşu binanın çizimine düşse de (bitişik nizam) aynı yöne bakan en yakın duvar bulunur
+{
+  const { edgeFacing } = await import('./sun.js');
+  const A = { id: 1, ring: [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]] }, Bn = { id: 2, ring: [[10, 0], [20, 0], [20, 10], [10, 10], [10, 0]] };
+  // A'nın doğu duvarı (x=10) B ile ortak; B'nin içindeki nokta (10.4, 5), doğuya (90°) bakan duvar: A'nın doğu duvarı
+  const e = edgeFacing([A, Bn], 10.4, 5, 90);
+  assert.ok(e && e.b.id === 1 && Math.abs(e.az - 90) < 1, JSON.stringify(e && { id: e.b.id, az: e.az }));
+  assert.equal(edgeFacing([A, Bn], 10.4, 5, 0, 2), null, 'yönü tutmayan duvar seçilmez');
+}
+console.log('paylaşılan duvar ok');
+
+// İlan bağlantısından adres (sayfa çekilmeden)
+{
+  const { addressFromUrl } = await import('./sun.js');
+  assert.deepEqual(addressFromUrl('https://www.hemnet.se/bostad/lagenhet-2rum-majorna-goteborgs-kommun-smyckegatan-50-21345678'), ['smyckegatan 50, goteborgs', 'smyckegatan 50']);
+  assert.deepEqual(addressFromUrl('https://www.funda.nl/detail/koop/amsterdam/appartement-kerkstraat-12-a/43123456/'), ['kerkstraat 12a, amsterdam', 'kerkstraat 12a']);
+  assert.equal(addressFromUrl('https://www.booli.se/annons/5234567'), null);
+  assert.equal(addressFromUrl('https://www.rightmove.co.uk/properties/151234567'), null);
+  assert.equal(addressFromUrl('not a url at all ##'), null);
+}
+console.log('ilan bağlantısı ok');

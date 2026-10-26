@@ -2,7 +2,7 @@
 import { overtureBuildings, terrariumElev } from './tiles.js';
 import { cget, cput, cmany, cprune, DAY } from './cache.js';
 import { t as tr, lang, LANGS, dirs, dirsLong, applyStatic } from './i18n.js';
-import { STOREY, zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip, annualPOA, pvYield, PV, shadowRing, facadeRange } from './sun.js';
+import { STOREY, zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, edgeFacing, addressFromUrl, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip, annualPOA, pvYield, PV, shadowRing, facadeRange } from './sun.js';
 
 const $ = id => document.getElementById(id);
 const icon = (n, c = 'ic') => `<svg class="${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
@@ -44,9 +44,10 @@ const tiles = L.tileLayer(TILE_URL, {
   maxZoom: 20, maxNativeZoom: 19, attribution: '<a href="https://www.esri.com" target="_blank" rel="noopener">Powered by Esri</a> · imagery: Esri, Vantor, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community · buildings © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL) · terrain: <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">AWS Terrain Tiles</a>'
 });
 tiles.on('tileloadstart', () => net('tiles')).on('tileerror', () => svcFail('tiles', 'tile error')).addTo(map); // dinleyici önce: ilk karolar da sayılır
-const sLayer = L.layerGroup().addTo(map), bLayer = L.layerGroup().addTo(map), rLayer = L.layerGroup().addTo(map);
+const sLayer = L.layerGroup().addTo(map), bLayer = L.layerGroup().addTo(map), rLayer = L.layerGroup().addTo(map), tLayer = L.layerGroup().addTo(map);
 let shadowsOn = false; // gölgeler katmanı (seçili saatte binaların yer gölgesi), düğmeyle açılır
-const marker = L.marker([51.4779, -0.0015], { draggable: true }).addTo(map);
+// keyboard/autoPanOnFocus kapalı: odak iğneye geçince (kart kapanması vb.) Leaflet haritayı iğneye kaydırıyor, dokunulan yerden kaçırıyordu
+const marker = L.marker([51.4779, -0.0015], { draggable: true, keyboard: false, autoPanOnFocus: false }).addTo(map);
 const cone = L.polygon([], { color: '#4af', weight: 1, fillOpacity: 0.25, interactive: false }).addTo(map);
 let acc = null, pt = null, accM = null, gAlt = null, gAltAcc = null, B = { buildings: [], own: [] }, req = 0;
 let last = null; // son çekim: {el, ground, hz, lat, lng} — binalar + zemin kotu + ufuk
@@ -253,13 +254,18 @@ function drawHouse() {
   // hangi duvar seçili: kat kutusunun hemen üstünde (sonuçların altında kayboluyordu)
   $('fac').innerHTML = `<div class="facrow">${icon('house')}<div><div class="st">${esc(cap(tr('wallFacing', { dir: dirsLong[Math.round(house.az / 45) % 8] })))}</div>
       ${addr ? `<div>${esc(addr)}</div>` : ''}</div>${tip(tr('facadeDetail', { az: house.az.toFixed(0), h: house.h.toFixed(0), est: house.guessed ? tr('estimated') : '', e: eye().toFixed(1) }))}
-      <button id="unpick" class="iconbtn" aria-label="${tr('unpick')}" title="${tr('unpick')}">${icon('x')}</button></div>`;
+      <button id="unpick" class="iconbtn" aria-label="${tr('unpick')}" title="${tr('unpick')}">${icon('x')}</button></div>${treeRow()}${feedbackRow()}`;
+  for (const b of $('fac').querySelectorAll('.fb [data-a]')) b.onclick = () => sendFeedback(b.dataset.a);
+  // paylaş (telefonda sistem menüsü, yoksa panoya) ve PDF (tarayıcının yazdırması): bağlantı aynı duvarı ve katı açar
+  el.innerHTML += `<div class="acts"><button id="sharebtn" class="btn" type="button">${icon('share')}${esc(tr('share'))}</button><button id="printbtn" class="btn" type="button">${icon('printer')}${esc(tr('savePdf'))}</button></div>`;
   el.innerHTML += `<details id="solarbox" class="sec"${solar ? ' open' : ''}><summary><span class="sumic">${icon('sun')}${esc(tr('solarTitle'))}</span>${icon('chevron-down')}</summary>
     ${solar ? `<section class="solarcard"><div class="field"><label for="surf">${tr('surface')}</label><select id="surf">${[90, 60, 45, 35, 30, 15, 0].map(v => `<option value="${v}"${v === tilt ? ' selected' : ''}>${esc(v === 90 ? tr('surfWall') : v === 0 ? tr('surfFlat') : tr('surfRoof', { t: v }))}</option>`).join('')}</select></div>
     <div class="energy">${tip(tr('energyNote') + (tilt < 90 ? ' ' + tr('roofNote', { h: (house.h + 0.5).toFixed(0) }) : ''))}${esc(incTxt)}<br>${esc(tr('energyRow', { d: dayLbl, e: house.day.energy.toFixed(1), s: sum.energy.toFixed(1), w: win.energy.toFixed(1) }))}</div>
     <div id="annual" class="annual"></div></section>` : ''}</details>
     ${compassOn ? `<div class="calrow"><button id="calib" class="btn">${icon('ruler')}${tr('calib')}</button>${tip(tr('calibHelp', { c: (cmpOff >= 0 ? '+' : '') + cmpOff.toFixed(0) }))}</div>` : ''}`;
-  $('unpick').onclick = () => { house = null; drawBuildings(); draw(); };
+  $('unpick').onclick = () => { house = null; drawBuildings(); draw(); loadTrees(); };
+  $('sharebtn').onclick = () => shareWall(addr, sum, win);
+  $('printbtn').onclick = () => window.print();
   $('confchip').onclick = openConf;
   if ($('surf')) $('surf').onchange = () => { tilt = +$('surf').value; draw(); };
   if (solar) showAnnual();
@@ -394,7 +400,10 @@ function drawHeading() {
     (heading != null && headAcc > 0 ? ` · ±${Math.round(headAcc)}°` : '') : '';
   const live = compassOn && heading != null;
   if (live && pt) cone.setLatLngs([pt, dest(pt, heading - 15, 90), dest(pt, heading, 100), dest(pt, heading + 15, 90)]); else cone.setLatLngs([]);
-  map.setBearing(live ? -heading : 0); // pusula açık = baktığın yön yukarı, kapalı = kuzey yukarı
+  // pusula açık = baktığın yön yukarı, kapalı = kuzey yukarı. Yalnız değişince: aynı değerle setBearing süren kaydırma
+  // animasyonunu kesiyordu (haritaya dokununca merkez yarı yolda kalıyordu)
+  const want = live ? -heading : 0; if (Math.abs(((map.getBearing() - want) % 360 + 540) % 360 - 180) > 0.05) map.setBearing(want);
+  if (typeof drawSunMark === 'function') drawSunMark();
   $('arrowtxt').textContent = live ? `${heading.toFixed(0)}° ${dirName(heading)}` :
     tr({ off: 'aOff', asking: 'aAsking', waiting: 'aWaiting', nodata: 'aNodata', denied: 'aDenied', none: 'aNone' }[cmpState] ?? 'aOff');
   drawSky();
@@ -551,9 +560,12 @@ function autoPick() {
   const all = B.buildings.concat(B.own);
   let b = (p.osmId != null && all.find(x => x.id === p.osmId && Math.hypot(x.cx, x.cy) < 60)) || B.own[0] || pickEdge(all, 0, 0, 25)?.b;
   if (!b) return;
-  const want = pt.lat >= 0 ? 180 : 0, r = b.ring;
+  // paylaşılan bağlantıda yön varsa o yöne bakan, noktaya en yakın duvar; yoksa ekvatora en çok bakan uzun duvar
+  const want = p.az ?? (pt.lat >= 0 ? 180 : 0), r = b.ring;
   let best = null;
-  for (let i = 0; i < r.length - 1; i++) {
+  // paylaşılan nokta duvarın 0,4 m önünde: 8 m içindeki duvar aynı yöne bakıyorsa o duvar
+  if (p.az != null) { const e = edgeFacing(all, 0, 0, p.az); if (e) best = { e, exact: true }; }
+  for (let i = 0; !best?.exact && i < r.length - 1; i++) {
     const [ax, ay] = r[i], [bx, by] = r[i + 1], L = Math.hypot(bx - ax, by - ay);
     if (L < 5) continue;
     const e = pickEdge([b], (ax + bx) / 2, (ay + by) / 2, 1);
@@ -561,7 +573,7 @@ function autoPick() {
     const d = Math.abs(((e.az - want + 540) % 360) - 180);
     if (!best || d < best.d - 1 || (Math.abs(d - best.d) <= 1 && L > best.L)) best = { e, d, L };
   }
-  if (best) { setHouse(best.e); say(tr('autoWall'), 'ok'); map.panInside([house.lat, house.lon], { padding: [70, 70] }); } // duvar adres noktasından uzak olabilir
+  if (best) { setHouse(best.e); if (!best.exact) say(tr('autoWall'), 'ok'); map.panInside([house.lat, house.lon], { padding: [70, 70] }); } // duvar adres noktasından uzak olabilir
 }
 async function refreshBuildings(force = false, attempt = 0) {
   const id = ++req; // her konum geçişi: bekleyen eski yanıt artık uygulanmaz
@@ -627,7 +639,7 @@ function setHouse(e) {
   const F = frame(pt.lat, pt.lng), [lat, lon] = F.from(e.x, e.y), r = e.b.ring;
   house = { lat, lon, az: e.az, id: e.b.id, h: e.b.h, levels: e.b.levels, storey: e.b.storey, guessed: e.b.guessed, env: last, cache: {}, edge: [F.from(...r[e.i]), F.from(...r[(e.i + 1) % r.length])] };
   say(tr('facadePicked'), 'ok');
-  drawBuildings(); draw();
+  drawBuildings(); draw(); loadTrees();
 }
 $('look').onclick = () => {
   if (heading == null || !last) return;
@@ -678,7 +690,9 @@ function gotPos(pos, pan) {
   accM = accuracy; gAlt = altitude; gAltAcc = altitudeAccuracy;
   if (acc) acc.remove();
   acc = L.circle([latitude, longitude], { radius: accuracy, color: '#4af', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(map);
+  const wasNear = house && gpsPt && gpsPt.distanceTo([house.lat, house.lon]) <= 150;
   gpsPt = L.latLng(latitude, longitude);
+  if (house && wasNear !== gpsPt.distanceTo([house.lat, house.lon]) <= 150) drawHouse(); // duvarın yanına gelince soru görünsün
   // Takip modu: konum düğmesi / "konumuma dön" ile açılır; arama, dokunma, sürükleme, geçmiş kapatır.
   // Kapalıyken GPS güncellemesi aranan/seçilen yeri ezmez (adres aramasında "konuma geri dönüyor" hatası).
   if (pan) { follow = true; say(tr('gotPos', { a: Math.round(accuracy) }), 'ok'); }
@@ -712,13 +726,15 @@ function onOrient(e) {
   raw = raw == null ? h : (raw + k * (((h - raw + 540) % 360) - 180) + 360) % 360;
   heading = (raw + cmpOff + 360) % 360;
   headFrame.id ||= requestAnimationFrame(headFrame);
+  clearTimeout(headFrame.t); headFrame.t = setTimeout(headFrame, 120); // kare gecikse/kısılsa da son yön mutlaka çizilir
 }
 // Harita her ekran karesinde döner (önce ~5 Hz'de kesik kesik dönüyordu); yazılar ve gökyüzü grafiği ~4 Hz.
 function headFrame() {
+  if (headFrame.id) cancelAnimationFrame(headFrame.id);
   headFrame.id = 0;
   if (!compassOn || heading == null) return;
-  if (performance.now() - lastRender > 250) { lastRender = performance.now(); return drawHeading(); }
-  map.setBearing(-heading);
+  if (performance.now() - lastRender > 250 || cmpState !== headFrame.st) { headFrame.st = cmpState; lastRender = performance.now(); return drawHeading(); } // durum değişince yazı hemen
+  map.setBearing(-heading); drawSunMark();
   if (pt) cone.setLatLngs([pt, dest(pt, heading - 15, 90), dest(pt, heading, 100), dest(pt, heading + 15, 90)]);
 }
 // iOS izni yalnızca bir dokunuşun içinde istenebilir; Android/diğerlerinde izin gerekmez.
@@ -772,20 +788,25 @@ $('backbtn').onclick = backToMe;
 let searchSeq = 0;
 $('sform').onsubmit = async e => {
   e.preventDefault();
-  const q = $('coord').value.trim(), box = $('sresults');
+  let q = $('coord').value.trim(); const box = $('sresults');
   if (!q) return;
+  // ilan bağlantısı yapıştırıldıysa: adres bağlantının içindeyse onu ara (sayfa çekilmez); yoksa ne yapılacağını söyle
+  let tries = [q];
+  if (/^(https?:\/\/|www\.)\S+$/i.test(q)) { tries = addressFromUrl(q); if (!tries) { box.innerHTML = `<span class="muted">${esc(tr('noAddrInLink'))}</span>`; return; } }
   const m = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/);
   const seq = ++searchSeq;
   const jump = (la, lo, osmId = null) => { follow = false; house = null; drawBuildings(); pendingPick = { lat: la, lon: lo, osmId }; setPoint(la, lo); };
   if (m && Math.abs(+m[1]) <= 90 && Math.abs(+m[2]) <= 180) { box.innerHTML = ''; $('coord').blur(); return jump(+m[1], +m[2]); }
   box.innerHTML = `<span class="muted">${tr('loading')}</span>`;
   try {
-    let res;
-    try {
-      const srv = await sfetch('sunpeek', `/api/search?lang=${lang}&q=${encodeURIComponent(q.slice(0, 200))}`, { signal: AbortSignal.timeout(12000) }).catch(() => null);
+    const geo = async t => { try {
+      const srv = await sfetch('sunpeek', `/api/search?lang=${lang}&q=${encodeURIComponent(t.slice(0, 200))}`, { signal: AbortSignal.timeout(12000) }).catch(() => null);
       if (!srv?.ok) throw new Error(srv ? 'HTTP ' + srv.status : 'server');
-      res = await srv.json();
-    } catch (err) { try { res = await photon(q); } catch { throw err; } } // sunucu yoksa doğrudan Photon (komoot), aynı OSM verisi
+      return await srv.json();
+    } catch (err) { try { return await photon(t); } catch { throw err; } } }; // sunucu yoksa doğrudan Photon (komoot), aynı OSM verisi
+    let res = [];
+    for (const t of tries) { res = await geo(t); if (res.length) { q = t; break; } } // bağlantıdan: önce "sokak no, semt", sonra "sokak no"
+    if (q !== $('coord').value.trim()) $('coord').value = q;
     res = res.filter(x => Number.isFinite(+x.lat) && Number.isFinite(+x.lon) && Math.abs(+x.lat) <= 90 && Math.abs(+x.lon) <= 180);
     // kapı numarası yazıldıysa o numarayı taşıyan sonuç öne (Photon önce caddeyi döndürüyordu)
     const num = q.match(/\b\d+[a-z]?\b/i)?.[0];
@@ -817,17 +838,20 @@ async function photonReverse(lat, lon) {
 // Kat: − / + düğmeleri
 for (const [id, d] of [['katminus', -1], ['katplus', 1]]) $(id).onclick = () => { $('kat').value = Math.max(0, kat() + d); katSrc = null; draw(); };
 // Binaya dokun = o binanın en yakın duvarı seçilir; açık alana dokun = kendi konumunu oraya taşı (iğne de sürüklenebilir)
+// Dokununca harita oraya anında ortalanır. Animasyonlu kaydırma (Leaflet + leaflet-rotate) ara sıra takılıyor, takılan animasyon
+// saniyeler sonra eski hedefiyle bitip haritayı geri götürüyordu.
+const centerOn = ll => map.setView(ll, map.getZoom(), { animate: false });
 map.on('click', e => {
   if (pt && last) {
     const [x, y] = frame(pt.lat, pt.lng).to(e.latlng.lat, e.latlng.lng), all = B.buildings.concat(B.own), hit = all.filter(b => pip(x, y, b.ring));
-    if (hit.length) { map.panTo(e.latlng); return setHouse(pickEdge(hit, x, y)); }
+    if (hit.length) { centerOn(e.latlng); return setHouse(pickEdge(hit, x, y)); }
     // parmak duvarın biraz dışına düştüyse: ekranda ~14 px içindeki duvar da seçilir
     const snap = pickEdge(all, x, y, 14 * 40075016.686 * Math.cos(pt.lat * Math.PI / 180) / 2 ** (map.getZoom() + 8));
-    if (snap) { map.panTo(e.latlng); return setHouse(snap); }
+    if (snap) { centerOn(e.latlng); return setHouse(snap); }
   }
   follow = false;
   setPoint(e.latlng.lat, e.latlng.lng, false);
-  map.panTo(e.latlng); // uzak bir noktaya dokununca harita oraya gidip ortalansın
+  centerOn(e.latlng); // uzak bir noktaya dokununca harita oraya gidip ortalansın
 });
 marker.on('dragend', () => { const p = marker.getLatLng(); follow = false; setPoint(p.lat, p.lng, false); });
 map.on('zoomend', draw);
@@ -877,14 +901,14 @@ const legend = [['#1ad940', 'lgVis'], ['#f7332a', 'lgBlock'], ['#a0522d', 'lgTer
   .map(([c, k]) => `<span style="white-space:nowrap;margin-right:8px"><span class="leg" style="background:${c}"></span>${tr(k)}</span>`).join(' ');
 // Native <dialog>: odak kapanı, Escape ve kapanınca odağın geri dönmesi tarayıcıdan gelir
 function openCard(html) { $('card').innerHTML = html; $('consent').hidden = true; if (!$('modal').open) $('modal').showModal(); $('card').querySelector('button')?.focus(); } // izin kutusu kartın arkasında kalmasın; kapanınca yeniden sorulur
-function closeCard() { if ($('modal').open) $('modal').close(); }
+function closeCard() { if ($('modal').open) $('modal').close(); askStats(); } // izin sorusu doğrudan: dialog 'close' olayı her ortamda gelmiyor (Esc için olay dinleyicisi de var)
 $('modal').onclick = e => { if (e.target === $('modal')) closeCard(); }; // arka plana dokununca kapan
 // İzinler kullanım anında değil, nedenleri anlatıldıktan sonra tek düğmeyle istenir (iOS izni dokunuşun içinde ister).
 function showIntro(help = false) {
   openCard(`<h2 id="cardtitle">${help ? tr('helpTitle') : tr('introTitle')}</h2><p>${tr('introLead')}</p>
     <p>${tr('step1')}<br>${tr('step2')}<br>${tr('step3')}</p>
     <h3>${tr('permTitle')}</h3><p class="perm">${icon('locate')}<span>${tr('permLoc')}</span></p><p class="perm">${icon('compass')}<span>${tr('permMotion')}</span></p>
-    <p class="muted">${tr('permData')} <a href="privacy.html" target="_blank" rel="noopener">${tr('legalPrivacy')}</a> · <a href="terms.html" target="_blank" rel="noopener">${tr('legalTerms')}</a></p>
+    <p class="muted">${tr('permData')} <a href="${legal('privacy')}" target="_blank" rel="noopener">${tr('legalPrivacy')}</a> · <a href="${legal('terms')}" target="_blank" rel="noopener">${tr('legalTerms')}</a></p>
     ${help ? `<p class="muted">${tr('permDenied')}</p><h3>${tr('legendTitle')}</h3><p class="muted">${legend}</p><h3>${tr('aboutTitle')}</h3><p class="muted">${tr('note')}</p>` : ''}
     <div class="actions"><button class="btn" id="introSkip">${help ? tr('close') : tr('searchInstead')}</button>${compassOn && pt ? '' : `<button class="btn primary" id="introGo">${icon('locate')}${tr('useMyLoc')}</button>`}</div>`);
   // iOS: pusula izni bu dokunuşun içinde istenmeli (await'ten önce)
@@ -892,6 +916,89 @@ function showIntro(help = false) {
   $('introSkip').onclick = () => { lsSet('introSeen', 1); closeCard(); if (!help) { if (!pt) setPoint(51.4779, -0.0015); $('coord').focus(); } };
 }
 $('helpbtn').onclick = () => showIntro(true);
+// Ağaçlar (ilk aşama: uyarı, hesapta yok): seçili duvarın çevresindeki OSM ağaçları/koruları sunucudan (100 m ızgarada önbellekli)
+// gelir; duvarın önündeki yarım düzlemde 30 m içinde olanlar uyarı olarak gösterilir ve güveni en çok "orta"ya indirir.
+let trees = null, treesKey = '';
+async function loadTrees() {
+  const k = house ? `${house.lat.toFixed(3)},${house.lon.toFixed(3)}` : '';
+  if (k === treesKey) return drawTrees();
+  treesKey = k; trees = null; tLayer.clearLayers();
+  if (!house) return;
+  try {
+    const r = await sfetch('sunpeek', `/api/trees?lat=${house.lat.toFixed(3)}&lon=${house.lon.toFixed(3)}`, { signal: AbortSignal.timeout(20000), bg: true });
+    if (r.ok && k === treesKey) { trees = await r.json(); drawHouse(); drawTrees(); }
+  } catch {} // ağaç verisi yoksa uyarı yok; sonuç bundan etkilenmez
+}
+function treesNear(maxD = 30) {
+  if (!trees || !house) return [];
+  const F = frame(house.lat, house.lon), nx = Math.sin(house.az * Math.PI / 180), ny = Math.cos(house.az * Math.PI / 180), out = [];
+  for (const t of trees) {
+    let d = Infinity;
+    for (const [la, lo] of t.t === 'tree' ? [[t.lat, t.lon]] : t.g) { const [x, y] = F.to(la, lo); if (x * nx + y * ny > 0) d = Math.min(d, Math.hypot(x, y)); }
+    if (d < maxD) out.push({ d, t: t.t });
+  }
+  return out;
+}
+function drawTrees() {
+  tLayer.clearLayers();
+  if (!trees || !house) return;
+  for (const t of trees) {
+    if (t.t === 'tree') L.circleMarker([t.lat, t.lon], { radius: 4, color: '#16a34a', weight: 1, fillColor: '#22c55e', fillOpacity: 0.8, interactive: false }).addTo(tLayer);
+    else L.polyline(t.g, { color: '#22c55e', weight: t.t === 'row' ? 3 : 1.5, dashArray: t.t === 'row' ? null : '2 4', opacity: 0.8, interactive: false }).addTo(tLayer);
+  }
+}
+// Sahada doğrulama: kullanıcı duvarın yakınındaysa (GPS ≤ 150 m) ve güneş şu an o duvarın önündeyse ekranı kapatmayan küçük bir
+// satır sorar: "şu an güneş var mı?". Cevap modelin o anki tahminiyle birlikte anonim gider; aynı duvar için saatte bir kez sorulur.
+const fbKey = () => `fb:${house.lat.toFixed(4)},${house.lon.toFixed(4)}:${new Date().toISOString().slice(0, 13)}`;
+function fbNow() {
+  if (!house?.day || !gpsPt || gpsPt.distanceTo([house.lat, house.lon]) > 150 || lsGet(fbKey())) return null;
+  const s = house.day.slots.find(x => Math.abs(x.t - Date.now()) <= 150000);
+  return s && s.state !== 'behind' && $('date').value === todayStr ? s : null; // güneş ufkun altında ya da duvarın arkasında: soru anlamsız
+}
+const treeRow = () => { const n = treesNear().length; return n ? `<div class="say warn treewarn">${icon('tree')}<span>${esc(tr('treesNear', { n }))}</span></div>` : ''; };
+const feedbackRow = () => fbNow() ? `<div class="fb">${icon('sun')}<span>${esc(tr('fbAsk'))}</span><button class="btn" type="button" data-a="sun">${esc(tr('fbSun'))}</button><button class="btn" type="button" data-a="shade">${esc(tr('fbShade'))}</button><button class="iconbtn" type="button" data-a="x" aria-label="${esc(tr('close'))}">${icon('x')}</button></div>` : '';
+async function sendFeedback(a) {
+  const s = fbNow(), row = $('fac').querySelector('.fb');
+  lsSet(fbKey(), a);
+  if (a === 'x' || !s) { row?.remove(); return; }
+  row.innerHTML = `${icon('sun')}<span>${esc(tr('fbThanks'))}</span>`;
+  const T = trustOf();
+  await fetch('/api/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, bg: true,
+    body: JSON.stringify({ lat: house.lat, lon: house.lon, az: Math.round(house.az) % 360, floor: kat(), answer: a, predicted: s.state, conf: { lo: 0, mid: 1, hi: 2 }[T.lvl], src: house.env.src ?? 'osm', sunAlt: +s.alt.toFixed(1), sunAz: +s.az.toFixed(1) }) }).catch(() => {});
+  setTimeout(() => row?.remove(), 4000);
+}
+// Güneş şu an nerede: haritanın kenarında, güneşin şu anki gerçek yönünde küçük bir simge ve ufuktan yüksekliği. Pusula ve saat
+// çubuklarından bağımsız (seçili saate değil, şimdiye bakar); harita dönünce kenar boyunca kayar. Daha fazla bölümünden kapatılır.
+function drawSunMark() {
+  const el = $('sunmark'), on = lsGet('sunmark') !== '0';
+  $('sunmarkchk').checked = on;
+  if (!on || !pt || document.body.classList.contains('expanded')) { el.hidden = true; return; }
+  const p = sunpos(pt.lat, pt.lng, new Date()), r = $('map').getBoundingClientRect(), phone = innerWidth <= 700;
+  // serbest bölge: üstte arama + mevsim çubuğu + uyarı/anahtar, sağda düğme sütunu (telefon), solda panel (masaüstü)
+  const L = phone ? r.left + 26 : $('panel').getBoundingClientRect().right + 30, R = r.right - (phone ? 80 : 70), T = r.top + (phone ? 214 : 128), Bt = r.bottom - 34;
+  if (R - L < 40 || Bt - T < 40) { el.hidden = true; return; }
+  const th = (p.az + (map.getBearing?.() ?? 0)) * Math.PI / 180, dx = Math.sin(th), dy = -Math.cos(th), cx = (L + R) / 2, cy = (T + Bt) / 2;
+  const t = Math.min(dx ? ((dx > 0 ? R : L) - cx) / dx : Infinity, dy ? ((dy > 0 ? Bt : T) - cy) / dy : Infinity);
+  el.style.left = `${cx + dx * t}px`; el.style.top = `${cy + dy * t}px`; el.hidden = false;
+  el.classList.toggle('down', p.alt <= 0); el.querySelector('span').textContent = p.alt > 0 ? `${Math.round(p.alt)}°` : '';
+}
+map.on('move rotate resize zoomend', drawSunMark); addEventListener('resize', drawSunMark); setInterval(drawSunMark, 60000);
+$('sunmarkchk').onchange = () => { lsSet('sunmark', $('sunmarkchk').checked ? '1' : '0'); drawSunMark(); };
+// Yasal sayfalar seçili dilde (privacy.sv.html …); sayfadaki sabit bağlantılar da açılışta çevrilir
+const legal = page => lang === 'en' ? `${page}.html` : `${page}.${lang}.html`;
+for (const a of document.querySelectorAll('a[href^="privacy.html"], a[href^="terms.html"]')) { const [f, h] = a.getAttribute('href').split('#'); a.href = legal(f.replace('.html', '')) + (h ? '#' + h : ''); }
+// Paylaşılan bağlantı aynı duvarı (konum + yön) ve katı açar: ?at=enlem,boylam&az=yön&f=kat
+const wallLink = () => `${location.origin}/?at=${house.lat.toFixed(6)},${house.lon.toFixed(6)}&az=${Math.round(house.az)}&f=${kat()}`;
+async function shareWall(addr, sum, win) {
+  const url = wallLink(), text = (addr ? addr + ': ' : '') + tr('shareText', { t: dur(house.day.visH), s: dur(sum.visH), w: dur(win.visH) });
+  if (navigator.share) { try { await navigator.share({ title: 'SunPeek', text, url }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+  try { await navigator.clipboard.writeText(`${text} ${url}`); say(tr('linkCopied'), 'ok'); } catch { prompt(tr('share'), url); }
+}
+// PDF/yazdırma: panel açık, harita yeni boyuta göre, sayfa altında bağlantı + tarih + tahmin notu
+addEventListener('beforeprint', () => {
+  $('sheet').open = true; map.invalidateSize();
+  document.body.dataset.print = (house ? wallLink() : location.href) + ' · ' + new Date().toLocaleDateString(lang) + ' · ' + tr('tfMissing');
+});
 // Ziyaret istatistiği (Cloudflare Web Analytics). Çerezsiz olsa da cihazdan bilgi okuyan betik AB'de (EDPB 2/2023, İsveç LEK 9:28)
 // açık izin ister: yalnız "İzin ver" sonrası yüklenir. Cloudflare panelindeki otomatik ekleme kapalı olmalı, yoksa izinsiz gelir.
 const CF_BEACON = { token: 'ddff7af00bce41cf96c8d0587d54cd47', spa: false };
@@ -912,7 +1019,7 @@ drawStats();
 $('netbtn').onclick = () => {
   const errOf = { dsSunpeek: 'sunpeek', dsOverpass: 'overpass', dsOverture: 'overture', dsElev: 'elev', dsTerr: 'terr', dsTZ: 'tz', dsPhoton: 'photon', dsIrr: 'irr', dsTiles: 'tiles' };
   const row = (k, n) => { const e = NETERR[errOf[k]]; return `<tr><td>${esc(tr(k))}${e ? `<div class="bad">${esc(tr('svcErr', { e: e.msg, t: e.t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', ...H12() }) }))}</div>` : ''}</td><td>${n == null ? '' : esc(tr('reqs', { n }))}</td></tr>`; };
-  openCard(`<h2 id="cardtitle">${tr('netTitle')}</h2><p>${tr('netOwn')}</p><p class="legal"><a href="privacy.html" target="_blank" rel="noopener">${tr('legalPrivacy')}</a> · <a href="terms.html" target="_blank" rel="noopener">${tr('legalTerms')}</a></p>
+  openCard(`<h2 id="cardtitle">${tr('netTitle')}</h2><p>${tr('netOwn')}</p><p class="legal"><a href="${legal('privacy')}" target="_blank" rel="noopener">${tr('legalPrivacy')}</a> · <a href="${legal('terms')}" target="_blank" rel="noopener">${tr('legalTerms')}</a></p>
     <table class="net">${row('dsSunpeek', NET.sunpeek)}${row('dsOverpass', NET.overpass)}${NET.overture ? row('dsOverture', NET.overture) : ''}${row('dsTerr', NET.terr)}${NET.elev ? row('dsElev', NET.elev) : ''}${NET.tz ? row('dsTZ', NET.tz) : ''}${NET.photon ? row('dsPhoton', NET.photon) : ''}${row('dsIrr', NET.irr)}${row('dsTiles', NET.tiles)}${row('dsCdn')}${row('dsCf')}</table>
     <div class="actions"><button class="btn" id="netClose">${tr('close')}</button></div>`);
   $('netClose').onclick = closeCard;
@@ -953,14 +1060,15 @@ function confOf(date = $('date').value) {
 //  3) kaynak: yedek (Overture) bina çizimleri OSM'den farklı olabilir, duvar bile başka seçilebilir: en çok orta
 // Ağaçlar, haritada olmayan binalar ve balkonlar hiçbir etkende yok; kartta her zaman yazılır. Bu bir doğruluk olasılığı değildir.
 function trustOf(date = $('date').value) {
-  return facadeCached('trust' + date, () => {
+  return facadeCached('trust' + date + '|' + (trees ? trees.length : '-'), () => {
     const [y, m, d] = date.split('-').map(Number), rg = confOf(date);
     const day = facadeCached(date, () => facadeDay(house.env, house, surfEye(), y, m, d, 5, TZ, tilt));
     const L0 = localize(house.env.el, house.lat, house.lon, house.env.ground), byId = new Map(L0.buildings.map(b => [b.id, b]));
     const blocked = day.slots.filter(s => s.state === 'block'), est = blocked.filter(s => byId.get(s.by)?.guessed).length;
     const share = blocked.length ? est / blocked.length : 0, backup = house.env.src === 'overture';
-    const f = { range: rg.conf >= 75 ? 2 : rg.conf >= 45 ? 1 : 0, heights: share > 0.5 ? 1 : 2, source: backup ? 1 : 2 };
-    return { rg, share, backup, f, lvl: ['lo', 'mid', 'hi'][Math.min(...Object.values(f))] };
+    const tn = treesNear(); // ağaçlar hesapta yok: güneşli tarafta 30 m içinde ağaç varsa güven en çok orta
+    const f = { range: rg.conf >= 75 ? 2 : rg.conf >= 45 ? 1 : 0, heights: share > 0.5 ? 1 : 2, source: backup ? 1 : 2, trees: tn.length ? 1 : 2 };
+    return { rg, share, backup, tn, f, lvl: ['lo', 'mid', 'hi'][Math.min(...Object.values(f))] };
   });
 }
 function confRange() {
@@ -980,6 +1088,7 @@ function openConf() {
       ${row(T.f.range, tr('tfRange', { lo: dur(T.rg.lo), hi: dur(T.rg.hi) }))}
       ${row(T.f.heights, T.share ? tr('tfHeights', { p: Math.round(T.share * 100) }) : tr('tfHeightsOk'))}
       ${row(T.f.source, tr(T.backup ? 'tfBackup' : 'tfOsm'))}
+      ${trees ? row(T.f.trees, T.tn.length ? tr('tfTrees', { n: T.tn.length }) : tr('tfTreesNone')) : ''}
       ${row('x', tr('tfMissing'))}</ul>
       <h3>${tr('confRangeTitle')}</h3><table class="net">${confRange()}</table><p class="muted">${tr('confRangeNote')}</p>${edit}
       <div class="actions"><button class="btn" id="confClose">${tr('close')}</button></div>`);
@@ -994,13 +1103,19 @@ function openConf() {
 
 // Açılış: ilk ziyarette tanıtım kartı (izinler oradan istenir). Sonraki ziyaretlerde izin zaten verilmişse doğrudan başla.
 // E2E test kancası (yalnız ?e2e ile): iç duruma salt okunur erişim, e2e/run.js kullanır
-if (new URLSearchParams(location.search).has('e2e')) window.__sp = { map, frame, get pt() { return pt; }, get house() { return house; }, get B() { return B; }, get last() { return last; } };
+if (new URLSearchParams(location.search).has('e2e')) window.__sp = { map, frame, get pt() { return pt; }, get house() { return house; }, get B() { return B; }, get last() { return last; }, get heading() { return heading; }, get cmpState() { return cmpState; }, get compassOn() { return compassOn; } };
 drawHeading(); // üstteki ok, konum gelmeden de durumunu göstersin
 // Bağlantıyla konum: ?at=enlem,boylam — o noktaya gider ve oradaki binanın duvarını seçer (paylaşılabilir link).
 // Varsayılan açılış (izin sorgusu, Greenwich) atlanır: asenkron sorgu sonradan dönüp bağlantıdaki konumu eziyordu.
 const atLink = (() => { const a = new URLSearchParams(location.search).get('at')?.match(/^(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)$/);
   return a && Math.abs(+a[1]) <= 90 && Math.abs(+a[2]) <= 180 ? [+a[1], +a[2]] : null; })();
-if (atLink) { lsSet('introSeen', 1); follow = false; pendingPick = { lat: atLink[0], lon: atLink[1], osmId: null }; setPoint(...atLink); }
+if (atLink) {
+  const qp = new URLSearchParams(location.search), az = qp.get('az'), f = qp.get('f');
+  lsSet('introSeen', 1); follow = false;
+  if (/^\d{1,3}$/.test(f ?? '') && +f <= 200) $('kat').value = +f; // paylaşılan kat
+  pendingPick = { lat: atLink[0], lon: atLink[1], osmId: null, az: /^\d{1,3}$/.test(az ?? '') && +az < 360 ? +az : null };
+  setPoint(...atLink);
+}
 else if (!localStorage.getItem('introSeen')) showIntro();
 else {
   navigator.permissions?.query({ name: 'geolocation' }).then(p => p.state === 'granted' ? locate() : setPoint(51.4779, -0.0015)).catch(() => locate()) ?? locate();

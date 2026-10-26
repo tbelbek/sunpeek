@@ -240,6 +240,21 @@ export function pickEdge(buildings, x, y, maxD = 30) {
   return best && best.dd < maxD ? facade(best.b, best.i, best.cx, best.cy) : null;
 }
 
+// Paylaşılan bağlantı için: (x, y)'ye en yakın, az yönüne (±20°) bakan duvar, hangi binanın içinde olunduğuna bakmadan.
+// pickEdge noktayı içeren binayla sınırlıyor; bitişik nizamda duvarın 0,4 m önü komşu binanın çizimine düşebiliyor.
+export function edgeFacing(buildings, x, y, az, maxD = 8) {
+  let best = null;
+  for (const b of buildings) for (let i = 0; i < b.ring.length - 1; i++) {
+    const [ax, ay] = b.ring[i], [bx, by] = b.ring[i + 1], dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+    if (L2 < 1) continue;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / L2)), cx = ax + t * dx, cy = ay + t * dy, dd = Math.hypot(x - cx, y - cy);
+    if (dd >= maxD || (best && dd >= best.dd)) continue;
+    const f = facade(b, i, cx, cy);
+    if (Math.abs(((f.az - az + 540) % 360) - 180) < 20) best = { dd, f };
+  }
+  return best?.f ?? null;
+}
+
 // Gözlemciden (0,0) bakış yönünde ilk çarpılan bina kenarı (≤ maxD m).
 export function rayEdge(buildings, heading, maxD = 200) {
   const sx = Math.sin(heading * rad), sy = Math.cos(heading * rad);
@@ -424,4 +439,24 @@ export function heightConfidence(buildings, dirAz, target = null, maxD = 150) {
   const rel = buildings.filter(b => b !== target && Math.hypot(b.cx, b.cy) < maxD && b.cx * sx + b.cy * sy > 0);
   const g = rel.filter(b => b.guessed).length, share = rel.length ? g / rel.length : 0, tg = !!target?.guessed;
   return { n: rel.length, guessed: g, share, targetGuessed: tg, level: share >= 0.75 ? 'low' : share >= 0.4 || tg ? 'mid' : 'ok' };
+}
+
+// ---------- ilan bağlantısı → adres ----------
+// Birçok Avrupa ilan sitesi sokak adını ve numarayı adresin içinde taşır (Hemnet: …/lagenhet-2rum-majorna-goteborgs-kommun-
+// smyckegatan-50-21345678, Funda: …/appartement-kerkstraat-12-a/43123456/). Sayfa çekilmez (kazıma yok): yalnız bağlantı metni.
+// Dönüş: aranacak metin(ler) ya da null (bağlantıda yalnız kimlik numarası var: Booli, Rightmove, ImmoScout, Idealista…).
+const LISTING_NOISE = new Set(('bostad lagenhet lägenhet villa radhus parhus fritidshus tomt rum kvm kommun lan län annons objekt till salu ' +
+  'wohnung haus kaufen mieten expose etage zimmer appartement maison vente achat location piece pieces annonce ' +
+  'piso casa venta alquiler inmueble habitaciones koop huur huis appartement detail woonhuis bovenwoning benedenwoning ' +
+  'for sale rent property properties details listing flat apartment house bedroom bedrooms www com html php adresse ' +
+  'bolig ejerlejlighed rakkerhus leilighet enebolig kohde asunto myytavana kerrostalo omakotitalo').split(' '));
+export function addressFromUrl(raw) {
+  let u; try { u = new URL(/^https?:\/\//i.test(raw) ? raw : 'https://' + raw); } catch { return null; }
+  const words = decodeURIComponent(u.pathname).toLowerCase().split(/[\/\-_+.,]+/).filter(Boolean)
+    .filter(w => !LISTING_NOISE.has(w) && !/^\d{5,}$/.test(w) && !/^\d+(rum|rok|kvm|m2|zi|p|pcs|bed|br)$/.test(w));
+  const i = words.findIndex((w, k) => k > 0 && /^\d{1,4}[a-z]?$/.test(w) && /^[\p{L}]{3,}$/u.test(words[k - 1]));
+  if (i < 0) return null;
+  const street = words[i - 1], num = words[i] + (/^[a-z]$/.test(words[i + 1] ?? '') ? words[i + 1] : '');
+  const place = words.slice(0, i - 1).filter(w => /^[\p{L}]{3,}$/u.test(w)).slice(-1)[0]; // ilçe/şehir: sokaktan önceki son kelime
+  return [place ? `${street} ${num}, ${place}` : null, `${street} ${num}`].filter(Boolean);
 }

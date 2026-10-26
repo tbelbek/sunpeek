@@ -14,6 +14,11 @@
 - **Shadows you can see:** a map layer draws every building's shadow at the selected time; the buildings that shade the selected wall during the day are outlined red, the one shading it right now is filled.
 - **Seasons and time:** season buttons (hemisphere-aware), a time slider, a day animation, and the sky plot with the sun's path, the horizon and the wall.
 - **Search or tap:** address search (or `lat, lon`); searching picks the building and its most sun-facing long wall automatically. Links of the form `https://sunpeek.uk/?at=57.6889,11.9223` open straight on that wall.
+- **Listing links:** paste a listing link (Hemnet, Funda, Boligsiden and other sites that keep the street in the URL) and the address is read from the link itself; the listing page is never fetched. Links that only carry an id get a short "paste the address instead" note.
+- **Share and PDF:** *Share* sends a link that opens the same wall and floor (`?at=lat,lon&az=direction&f=floor`) through the phone's share menu or the clipboard; *Save as PDF* prints the map and the result with the link, date and limits.
+- **Where the sun is now:** a small sun at the map's edge shows the sun's real direction and height for the selected place right now; it moves when the map turns and can be switched off under *More*.
+- **Trees, first step:** trees and wooded areas from OpenStreetMap within 30 m on the sunny side of the wall are shown on the map and as a warning; they are not in the calculation yet, so they cap the confidence at medium.
+- **Sun check:** when you stand within ~150 m of the selected wall while the sun is on its side, a small row asks whether the wall has sun right now. Answers (anonymous, ~10 m position, kept 2 years) are compared with the model's estimate to measure real-world accuracy.
 - **Phone compass:** the map rotates with the phone, and a "house I'm facing" picker finds the wall in front of you.
 - **Solar energy (optional, folded away):** angle of incidence, clear-sky energy per m², and a conservative yearly range per installed kWp from three years of measured sunshine, including the share of an average EU household's electricity.
 - **Honest about uncertainty:** a warning when most nearby building heights are unknown, the confidence range above, and short notes kept in (i) tips so the screen stays light.

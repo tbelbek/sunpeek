@@ -11,7 +11,7 @@ import { overtureTile, OVERTURE } from '../tiles.js'; // istemciyle aynı okuyuc
 
 const DAY = 864e5;
 // Bina dışı önbellek: kaynak → [TTL gün, günlük bütçe]. Arazi durağan; Overture anahtarı sürümü içerir; ışınım anahtarı yılları içerir.
-const TTL = { terrain: 365, overture: 60, irr: 400, search: 30, reverse: 90 }, KV_PREFIX = { overture: 'ovt:', irr: 'irr:', search: 's:', reverse: 'r:' }, LIMIT = { terrain: 20000, overture: 5000, irr: 1000, search: 3000, reverse: 3000 };
+const TTL = { terrain: 365, overture: 60, irr: 400, search: 30, reverse: 90, trees: 90 }, KV_PREFIX = { overture: 'ovt:', irr: 'irr:', search: 's:', reverse: 'r:', trees: 'tree:' }, LIMIT = { terrain: 20000, overture: 5000, irr: 1000, search: 3000, reverse: 3000, trees: 1500 };
 const PHOTON = process.env.PHOTON_URL ?? 'https://photon.komoot.io', NOMINATIM = process.env.NOMINATIM_URL ?? 'https://nominatim.openstreetmap.org', TERRAIN = process.env.TERRAIN_URL ?? 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium';
 const ARCHIVE = process.env.ARCHIVE_URL ?? 'https://archive-api.open-meteo.com/v1/archive';
 export const CELL = 0.005, TTL_DAYS = 90, MAX_CELLS = 40, MAX_SPAN = 6;
@@ -43,11 +43,14 @@ export function createServer(sql, { log = console } = {}) {
   const slot = () => new Promise(r => active < 2 ? (active++, r()) : queue.push(r));
   const free = () => { const n = queue.shift(); n ? n() : active--; };
   let spent = 0, day = new Date().toDateString();
-  async function overpass([s, w, n, e]) {
+  // kind: 'buildings' (varsayılan) ya da 'trees' (tek ağaç, ağaç sırası, koru/orman alanı; ilişkiler hariç)
+  async function overpass([s, w, n, e], kind = 'buildings') {
     if (day !== new Date().toDateString()) { day = new Date().toDateString(); spent = 0; }
     if (++spent > BUDGET) throw new Error('daily Overpass budget used');
     const a = `${s.toFixed(4)},${w.toFixed(4)},${n.toFixed(4)},${e.toFixed(4)}`;
-    const q = `[out:json][timeout:60];(way(${a})["building"];way(${a})["building:part"];relation(${a})["building"];);out tags geom;`;
+    const q = kind === 'trees'
+      ? `[out:json][timeout:30];(node(${a})["natural"="tree"];way(${a})["natural"="tree_row"];way(${a})["natural"="wood"];way(${a})["landuse"="forest"];);out tags geom;`
+      : `[out:json][timeout:60];(way(${a})["building"];way(${a})["building:part"];relation(${a})["building"];);out tags geom;`;
     await slot();
     try {
       let err;
@@ -201,6 +204,14 @@ export function createServer(sql, { log = console } = {}) {
         return nominatim(`/search?format=jsonv2&limit=5&accept-language=${lang}&q=${encodeURIComponent(q)}`);
       }));
     },
+    // /api/trees?lat=..&lon=.. — ~100 m ızgarasına oturtulmuş noktanın ±160 m çevresindeki ağaçlar (OSM), 90 gün önbellekte
+    async trees(m, send, raw, u) {
+      const lat = +(+u.searchParams.get('lat')).toFixed(3), lon = +(+u.searchParams.get('lon')).toFixed(3);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return send(400, { error: 'bad point' });
+      const d = 0.0015, k = Math.cos(lat * Math.PI / 180);
+      send(200, await cachedJSON('trees', `tree:${lat},${lon}`, async () => (await overpass([lat - d, lon - d / k, lat + d, lon + d / k], 'trees'))
+        .map(e => e.type === 'node' ? { t: 'tree', lat: e.lat, lon: e.lon, h: +e.tags?.height || null } : { t: e.tags?.natural === 'tree_row' ? 'row' : 'wood', g: (e.geometry ?? []).map(p => [p.lat, p.lon]) })));
+    },
     // /api/reverse?lat=..&lon=..&lang=tr — Nominatim adres çözme (~1 m'ye yuvarlanmış)
     async reverse(m, send, raw, u) {
       const lat = +(+u.searchParams.get('lat')).toFixed(5), lon = +(+u.searchParams.get('lon')).toFixed(5), lang = LANGS.has(u.searchParams.get('lang')) ? u.searchParams.get('lang') : 'en';
@@ -212,12 +223,13 @@ export function createServer(sql, { log = console } = {}) {
     },
   };
   const ROUTES = [[/^\/api\/terrain\/(\d+)\/(\d+)\/(\d+)\.png$/, 'terrain'], [/^\/api\/overture\/(\d+)\/(\d+)\/(\d+)$/, 'overture'],
-    [/^\/api\/irr$/, 'irr'], [/^\/api\/search$/, 'search'], [/^\/api\/reverse$/, 'reverse']];
+    [/^\/api\/irr$/, 'irr'], [/^\/api\/search$/, 'search'], [/^\/api\/reverse$/, 'reverse'], [/^\/api\/trees$/, 'trees']];
 
   const server = http.createServer(async (req, res) => {
     const send = (code, body, type = 'application/json') => { res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(typeof body === 'string' ? body : JSON.stringify(body)); };
     try {
       const u = new URL(req.url, 'http://x');
+      if (u.pathname === '/api/feedback') return req.method === 'POST' ? await feedback(req, send) : send(405, { error: 'method' });
       if (req.method !== 'GET') return send(405, { error: 'method' });
       if (u.pathname === '/api/health') { await sql`select 1`; return send(200, 'ok', 'text/plain'); }
       if (u.pathname === '/api/cells') { const keys = parse(u.searchParams.get('k')); return keys ? send(200, await cells(keys)) : send(400, { error: 'bad cells' }); }
@@ -226,7 +238,24 @@ export function createServer(sql, { log = console } = {}) {
       send(404, { error: 'not found' });
     } catch (e) { log.warn?.(e.message); if (!res.headersSent) send(502, { error: 'upstream' }); }
   });
+  // Sahada doğrulama cevabı: tek yazılabilir uç nokta, önbelleğe dokunmaz. Gövde ≤ 2 KB, her alan sıkı doğrulanır, IP saklanmaz.
+  async function feedback(req, send) {
+    let body = '';
+    for await (const c of req) { body += c; if (body.length > 2048) return send(413, { error: 'too large' }); }
+    let d; try { d = JSON.parse(body); } catch { return send(400, { error: 'bad json' }); }
+    const num = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
+    const ok = num(d.lat, -90, 90) && num(d.lon, -180, 180) && num(d.az, 0, 360) && Number.isInteger(d.floor) && d.floor >= 0 && d.floor <= 200
+      && ['sun', 'shade'].includes(d.answer) && ['vis', 'block', 'terrain', 'behind', 'unknown'].includes(d.predicted)
+      && (d.conf == null || [0, 1, 2].includes(d.conf)) && (d.src == null || ['osm', 'overture'].includes(d.src))
+      && (d.sunAlt == null || num(d.sunAlt, -90, 90)) && (d.sunAz == null || num(d.sunAz, 0, 360));
+    if (!ok) return send(400, { error: 'bad feedback' });
+    const r4 = v => Math.round(v * 1e4) / 1e4; // ~10 m
+    await sql`insert into feedback (lat, lon, az, floor, answer, predicted, conf, src, sun_alt, sun_az)
+      values (${r4(d.lat)}, ${r4(d.lon)}, ${Math.round(d.az)}, ${d.floor}, ${d.answer}, ${d.predicted}, ${d.conf ?? null}, ${d.src ?? null}, ${d.sunAlt ?? null}, ${d.sunAz ?? null})`;
+    send(201, { ok: true });
+  }
   const purge = () => Promise.all([
+    sql`delete from feedback where at < now() - interval '730 days'`,
     sql`delete from cells where fetched_at < now() - make_interval(days => ${TTL_DAYS})`,
     // her kaynak kendi süresiyle (arama 30 gün, adres 90 gün); önce en uzun süre kullanılıyordu, aramalar 400 gün kalıyordu
     ...Object.entries(KV_PREFIX).map(([src, pre]) => sql`delete from kv where key like ${pre + '%'} and fetched_at < now() - make_interval(days => ${TTL[src]})`),

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SunPeek — Integritet</title>
+<meta name="description" content="Vad SunPeek sparar, vart dina data tar vägen och hur länge.">
+<link rel="stylesheet" href="legal.css">
+</head>
+<body>
+<main>
+<p><a href="./">← SunPeek</a></p>
+<h1>Integritet</h1>
+<p class="muted">Senast uppdaterad: 26 oktober 2026</p>
+<p class="langs"><a href="privacy.html">English</a> · <a href="privacy.sv.html">Svenska</a> · <a href="privacy.tr.html">Türkçe</a> · <a href="privacy.de.html">Deutsch</a> · <a href="privacy.es.html">Español</a> · <a href="privacy.fr.html">Français</a></p>
+
+<p>SunPeek uppskattar hur mycket direkt sol en husvägg får. Det finns inga konton, ingen reklam och inga spårningscookies, och data säljs eller delas inte för marknadsföring. Den här sidan listar allt som lämnar din enhet, vem som tar emot det och hur länge det sparas.</p>
+
+<h2>Vem som ansvarar</h2>
+<p>SunPeek är ett gratis, icke-kommersiellt projekt som drivs av sin utvecklare i Sverige. Kontakt, frågor och begäranden (tillgång, radering, invändning): <a href="https://github.com/tbelbek/sunpeek/issues">github.com/tbelbek/sunpeek/issues</a>. Om du hellre inte skriver offentligt kan du öppna ett ärende och be om en privat kanal; ta inte med några personuppgifter.</p>
+
+<h2>På din enhet</h2>
+<ul>
+<li><b>Inställningar och historik</b> (språk, tidsformat, våning, sparade väggar med deras adresser): sparas i din webbläsare (localStorage). De lämnar aldrig din enhet och du kan radera dem genom att rensa webbplatsens data.</li>
+<li><b>Cache för kartdata</b> (hus, terrängrutor, soldata): sparas i din webbläsare (IndexedDB) så att platser du redan har sett öppnas snabbare; hus uppdateras efter 90 dagar, terräng efter ett år.</li>
+<li><b>Plats och kompass</b>: används bara om du tillåter det, och bara på sidan, för att centrera kartan och vrida den med telefonen. Din exakta position skickas inte någonstans; för att hämta kartdata skickar appen området runt den (se nedan).</li>
+</ul>
+
+<h2>SunPeeks egen server</h2>
+<p>En delad, anonym cache, så att ett område som någon redan har laddat öppnas direkt för alla. Den tar bara emot det som behövs för att hämta kartdata: nummer på områdesceller (rutor på ungefär 500 m), kartrutornas nummer, en cell på ~10 km för soldata, texten du söker efter och, för sparade väggar, väggens position för att hitta dess adress.</p>
+<table>
+<tr><th>Sparas på servern</th><th>Hur länge</th></tr>
+<tr><td>Hus för ett område</td><td>90 dagar</td></tr>
+<tr><td>Träd i ett område</td><td>90 dagar</td></tr>
+<tr><td>Terrängrutor</td><td>1 år</td></tr>
+<tr><td>Soldata för en cell på ~10 km</td><td>400 dagar</td></tr>
+<tr><td>Overtures husrutor</td><td>60 dagar</td></tr>
+<tr><td>Söktext och dess resultat</td><td>30 dagar</td></tr>
+<tr><td>Adressen för en position (avrundad till ~1 m)</td><td>90 dagar</td></tr>
+</table>
+<p><b>Solkontroll:</b> om du är inom cirka 150 m från väggen du valt och solen står på dess sida kan SunPeek fråga om det är sol på väggen just nu. Bara om du svarar skickas svaret, väggens position avrundad till cirka 10 m, dess riktning, våningen och SunPeeks egen uppskattning för det ögonblicket. Det sparas i 2 år för att mäta hur träffsäkra uppskattningarna är, utan IP-adress eller enhets-id.</p>
+<p>Ingen av dessa poster innehåller en IP-adress, en enhetsidentifierare eller ett konto, så de kan inte kopplas till dig. Servern för ingen åtkomstlogg. För att stoppa missbruk räknar den anrop per IP-adress i minnet under en minut; den räknaren skrivs aldrig till disk.</p>
+
+<h2>Andra tjänster som din webbläsare kontaktar</h2>
+<p>Som på alla webbplatser skickar din webbläsare din IP-adress och webbläsartyp till varje tjänst den hämtar från. De här tjänsterna får området du tittar på, aldrig din exakta GPS-position:</p>
+<ul>
+<li><b>Cloudflare</b> (USA/EU): bär all trafik till sunpeek.uk och skyddar den mot attacker, och räknar besök, men bara om du samtycker (se nedan). Se <a href="https://www.cloudflare.com/privacypolicy/">Cloudflares integritetspolicy</a>.</li>
+<li><b>Esri</b> (USA): satellitbildsrutor för området på skärmen.</li>
+<li><b>unpkg</b>: kartbibliotekets filer, laddas en gång; inga platsdata.</li>
+<li>Bara när SunPeeks server inte kan svara: <b>OpenStreetMap Overpass</b> (hus), <b>Overture Maps / Amazon S3</b> (hus som reserv), <b>AWS Terrain Tiles</b> (terräng), <b>Open-Meteo</b> (höjd, tidszon, soldata) och <b>Photon by komoot</b> (söktext och positionen för en sparad vägg).</li>
+</ul>
+<p>Datakortet i appen (Mer › SunPeek-cache › Detaljer) visar hur många anrop som gick till varje tjänst under ditt besök.</p>
+
+<h2 id="analytics">Besöksstatistik</h2>
+<p>Bara om du väljer <b>Tillåt</b> när SunPeek frågar laddas <b>Cloudflare Web Analytics</b>, som registrerar sidan, landet, webbläsartypen och webbplatsen du kom från. Det använder inga cookies och identifierar eller följer dig inte mellan webbplatser; Cloudflare sparar rådata en kort tid och därefter bara summor. Om du väljer <b>Nej tack</b> laddas skriptet aldrig. Du kan ändra ditt val när som helst under <i>Mer › Besöksstatistik</i>.</p>
+
+<h2>Rättslig grund</h2>
+<p>Att tillhandahålla tjänsten du ber om (hämta kartdata, söka, slå upp adresser) och hålla den säker grundar sig på berättigat intresse (art. 6(1)(f) i dataskyddsförordningen (GDPR)). Åtkomst till plats och kompass grundar sig på ditt tillstånd i webbläsaren, och besöksstatistiken på ditt samtycke (art. 6(1)(a) GDPR och lagen (2022:482) om elektronisk kommunikation, 9 kap. 28 §); du kan när som helst återkalla båda. Inställningar och historik som sparas på din enhet är nödvändiga för tjänsten du använder och kräver inget samtycke.</p>
+
+<h2>Dina rättigheter</h2>
+<p>Du kan begära tillgång, rättelse eller radering och invända mot behandling. Eftersom servern inte sparar några identifierare kan vi oftast inte hitta poster som hör till dig; en sökning du har gjort kan raderas om du berättar dess exakta text. Data på din enhet bestämmer du själv över: rensa webbplatsens data i webbläsaren. Du kan också klaga hos <a href="https://www.imy.se/en/">Integritetsskyddsmyndigheten (IMY)</a>.</p>
+
+<h2>Ändringar</h2>
+<p>Om något av detta ändras uppdateras sidan och datumet ändras. Hela historiken finns i det <a href="https://github.com/tbelbek/sunpeek/commits/main/privacy.html">offentliga kodförrådet</a>.</p>
+</main>
+</body>
+</html>

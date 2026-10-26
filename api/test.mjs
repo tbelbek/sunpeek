@@ -41,11 +41,11 @@ process.env.MISS_WAIT_MS = '800';
 const { createServer } = await import('./server.js');
 
 const sql = postgres(process.env.DATABASE_URL ?? 'postgres://postgres:t@127.0.0.1:55432/postgres', { onnotice: () => {} });
-await sql`drop table if exists cells, kv, blobs, schema_migrations`;
+await sql`drop table if exists cells, kv, blobs, feedback, schema_migrations`;
 const quiet = { info() {}, warn() {}, error: console.error };
 const { server, migrate, purge } = createServer(sql, { log: quiet });
 await migrate(); await migrate(); // göç iki kez: ikincisi bir şey yapmamalı
-assert.deepEqual((await sql`select version from schema_migrations`).map(r => r.version), ['001_cells.sql', '002_kv_blobs.sql']);
+assert.deepEqual((await sql`select version from schema_migrations`).map(r => r.version), ['001_cells.sql', '002_kv_blobs.sql', '003_feedback.sql']);
 server.listen(0);
 const base = `http://127.0.0.1:${server.address().port}`;
 const get = async q => { const r = await fetch(base + q); return { status: r.status, body: r.headers.get('content-type')?.includes('json') ? await r.json() : await r.text(), cc: r.headers.get('cache-control') }; };
@@ -120,6 +120,31 @@ await new Promise(res => setTimeout(res, 300)); // çekim hatası işlensin
 t = Date.now(); r = await get('/api/cells?k=12002:3002'); assert.deepEqual(r.body.missing, ['12002:3002']);
 assert.ok(Date.now() - t < 400, `devre açıkken bekleme yok: ${Date.now() - t} ms`);
 mode = 'ok';
+
+// 6d. ağaçlar: ~100 m ızgarasında, Overpass'tan bir kez, sonra önbellekten
+{
+  mode = 'ok'; const before = hits;
+  let r = await get('/api/trees?lat=57.68941&lon=11.92231'); assert.equal(r.status, 200); assert.ok(Array.isArray(r.body)); assert.equal(hits, before + 1);
+  r = await get('/api/trees?lat=57.68949&lon=11.92239'); assert.equal(hits, before + 1, 'aynı 100 m hücre önbellekten');
+  assert.equal((await get('/api/trees?lat=999&lon=1')).status, 400);
+}
+
+// 6c. sahada doğrulama cevabı: tek POST yolu, sıkı doğrulama, konum ~10 m'ye yuvarlanır, IP yok
+{
+  const post = (b, raw) => fetch(base + '/api/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: raw ?? JSON.stringify(b) });
+  const good = { lat: 57.6935123, lon: 11.9575987, az: 210, floor: 2, answer: 'sun', predicted: 'vis', conf: 1, src: 'osm', sunAlt: 12.3, sunAz: 201.5 };
+  assert.equal((await post(good)).status, 201);
+  const [row] = await sql`select * from feedback`;
+  assert.equal(row.lat, 57.6935); assert.equal(row.lon, 11.9576); assert.equal(row.answer, 'sun');
+  assert.ok(!Object.keys(row).some(k => /ip|addr|agent/i.test(k)), 'kayıtta IP/cihaz alanı yok');
+  for (const bad of [{ ...good, answer: 'maybe' }, { ...good, lat: 200 }, { ...good, floor: 1.5 }, { ...good, predicted: 'x' }, {}]) assert.equal((await post(bad)).status, 400, JSON.stringify(bad));
+  assert.equal((await post(null, '{bad')).status, 400);
+  assert.equal((await post(null, JSON.stringify({ ...good, pad: 'x'.repeat(3000) }))).status, 413);
+  assert.equal((await fetch(base + '/api/feedback')).status, 405);
+  assert.equal((await fetch(base + '/api/cells?k=1:1', { method: 'POST' })).status, 405, 'önbellek yolları POST kabul etmez');
+  await sql`update feedback set at = now() - interval '800 days'`; await purge();
+  assert.equal((await sql`select count(*)::int as n from feedback`)[0].n, 0, '2 yıldan eski cevap silinir');
+}
 
 // 7. temizlik: 90 günden eskiler silinir
 await sql`update cells set fetched_at = now() - interval '100 days' where i = 11538`;

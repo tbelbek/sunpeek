@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SunPeek — Gizlilik</title>
+<meta name="description" content="SunPeek'in neyi sakladığı, verilerinin nereye gittiği ve ne kadar süre tutulduğu.">
+<link rel="stylesheet" href="legal.css">
+</head>
+<body>
+<main>
+<p><a href="./">← SunPeek</a></p>
+<h1>Gizlilik</h1>
+<p class="muted">Son güncelleme: 26 Ekim 2026</p>
+<p class="langs"><a href="privacy.html">English</a> · <a href="privacy.sv.html">Svenska</a> · <a href="privacy.tr.html">Türkçe</a> · <a href="privacy.de.html">Deutsch</a> · <a href="privacy.es.html">Español</a> · <a href="privacy.fr.html">Français</a></p>
+
+<p>SunPeek bir bina duvarının ne kadar doğrudan güneş aldığını tahmin eder. Hesap, reklam ya da izleme çerezi yoktur; veriler pazarlama amacıyla satılmaz veya paylaşılmaz. Bu sayfa cihazından çıkan her şeyi, bunu kimin aldığını ve ne kadar süre saklandığını listeler.</p>
+
+<h2>Sorumlu kim</h2>
+<p>SunPeek, İsveç'te geliştiricisi tarafından yürütülen ücretsiz ve ticari olmayan bir projedir. İletişim, sorular ve talepler (erişim, silme, itiraz): <a href="https://github.com/tbelbek/sunpeek/issues">github.com/tbelbek/sunpeek/issues</a>. Herkese açık yazmak istemiyorsan özel bir kanal isteyen bir issue aç ve içine kişisel bilgi yazma.</p>
+
+<h2>Cihazında</h2>
+<ul>
+<li><b>Ayarlar ve geçmiş</b> (dil, saat biçimi, kat, adresleriyle birlikte kayıtlı duvarlar): tarayıcında (localStorage) saklanır. Cihazından hiç çıkmaz; sitenin verilerini temizleyerek silebilirsin.</li>
+<li><b>Harita verisi önbelleği</b> (binalar, arazi karoları, güneşlenme verisi): daha önce gördüğün yerler daha hızlı açılsın diye tarayıcında (IndexedDB) saklanır; binalar 90 gün sonra, arazi bir yıl sonra yenilenir.</li>
+<li><b>Konum ve pusula</b>: yalnızca izin verirsen ve yalnızca sayfanın içinde, haritayı ortalamak ve telefonunla döndürmek için kullanılır. Tam konumun hiçbir yere gönderilmez; harita verisini almak için uygulama çevresindeki alanı gönderir (aşağıya bak).</li>
+</ul>
+
+<h2>SunPeek'in kendi sunucusu</h2>
+<p>Ortak, anonim bir önbellek: birinin daha önce yüklediği bir alan herkes için anında açılır. Yalnızca harita verisini almak için gerekenleri alır: alan hücre numaraları (yaklaşık 500 m'lik kareler), harita karo numaraları, güneşlenme verisi için ~10 km'lik bir hücre, aradığın metin ve kayıtlı duvarlar için adresini bulmak üzere duvarın konumu.</p>
+<table>
+<tr><th>Sunucuda tutulan</th><th>Süre</th></tr>
+<tr><td>Bir alanın binaları</td><td>90 gün</td></tr>
+<tr><td>Bir bölgedeki ağaçlar</td><td>90 gün</td></tr>
+<tr><td>Arazi karoları</td><td>1 yıl</td></tr>
+<tr><td>~10 km'lik bir hücrenin güneşlenme verisi</td><td>400 gün</td></tr>
+<tr><td>Overture bina karoları</td><td>60 gün</td></tr>
+<tr><td>Arama metni ve sonuçları</td><td>30 gün</td></tr>
+<tr><td>Bir konumun adresi (~1 m'ye yuvarlanmış)</td><td>90 gün</td></tr>
+</table>
+<p><b>Güneş kontrolü:</b> seçtiğin duvarın yaklaşık 150 m yakınındaysan ve güneş o tarafındaysa SunPeek şu an duvarda güneş olup olmadığını sorabilir. Yalnız cevap verirsen; cevap, duvarın yaklaşık 10 m'ye yuvarlanmış konumu, yönü, kat ve SunPeek'in o andaki kendi tahmini gönderilir. Tahminlerin ne kadar doğru olduğunu ölçmek için IP adresi ya da cihaz kimliği olmadan 2 yıl saklanır.</p>
+<p>Bu kayıtların hiçbiri IP adresi, cihaz kimliği veya hesap içermez, bu yüzden sana bağlanamazlar. Sunucu erişim günlüğü tutmaz. Kötüye kullanımı önlemek için IP adresi başına istekleri bir dakika boyunca bellekte sayar; bu sayaç hiçbir zaman diske yazılmaz.</p>
+
+<h2>Tarayıcının bağlandığı diğer servisler</h2>
+<p>Her web sitesinde olduğu gibi tarayıcın, veri aldığı her servise IP adresini ve tarayıcı türünü gönderir. Bu servislere baktığın alan gider, tam GPS konumun asla gitmez:</p>
+<ul>
+<li><b>Cloudflare</b> (ABD/AB): sunpeek.uk'a giden tüm trafiği taşır, saldırılara karşı korur ve yalnızca onay verirsen ziyaretleri sayar (aşağıya bak). Bkz. <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare gizlilik politikası</a>.</li>
+<li><b>Esri</b> (ABD): ekrandaki alanın uydu görüntüsü karoları.</li>
+<li><b>unpkg</b>: harita kütüphanesi dosyaları, bir kez yüklenir; konum verisi yok.</li>
+<li>Yalnızca SunPeek'in sunucusu yanıt veremediğinde: <b>OpenStreetMap Overpass</b> (binalar), <b>Overture Maps / Amazon S3</b> (yedek bina verisi), <b>AWS Terrain Tiles</b> (arazi), <b>Open-Meteo</b> (yükseklik, saat dilimi, güneşlenme verisi) ve <b>Photon by komoot</b> (arama metni ve kayıtlı bir duvarın konumu).</li>
+</ul>
+<p>Uygulamadaki veri kartı (Daha fazla › SunPeek önbelleği › Ayrıntılar) ziyaretin boyunca her servise kaç istek gittiğini gösterir.</p>
+
+<h2 id="analytics">Ziyaret istatistiği</h2>
+<p>Yalnızca SunPeek sorduğunda <b>İzin ver</b>'i seçersen <b>Cloudflare Web Analytics</b> yüklenir; sayfayı, ülkeyi, tarayıcı türünü ve geldiğin siteyi kaydeder. Çerez kullanmaz, seni tanımlamaz ve siteler arasında izlemez; Cloudflare ham veriyi kısa bir süre tutar, sonra yalnızca toplamları saklar. <b>Hayır</b>'ı seçersen betik hiç yüklenmez. Seçimini istediğin zaman <i>Daha fazla › Ziyaret istatistiği</i> altından değiştirebilirsin.</p>
+
+<h2>Hukuki dayanak</h2>
+<p>İstediğin hizmeti sunmak (harita verisi almak, arama yapmak, adres bulmak) ve güvenliğini sağlamak meşru menfaate dayanır (Genel Veri Koruma Tüzüğü (GDPR) md. 6(1)(f)). Konum ve pusula erişimi tarayıcıda verdiğin izne, ziyaret istatistiği ise onayına dayanır (GDPR md. 6(1)(a) ve İsveç Elektronik Haberleşme Kanunu, 9. bölüm §28); ikisini de istediğin zaman geri alabilirsin. Cihazında tutulan ayarlar ve geçmiş, kullandığın hizmet için gereklidir ve onay gerektirmez.</p>
+
+<h2>Hakların</h2>
+<p>Erişim, düzeltme veya silme talep edebilir ve işlemeye itiraz edebilirsin. Sunucu hiçbir tanımlayıcı saklamadığı için sana ait kayıtları genellikle bulamayız; yaptığın bir aramanın tam metnini bize söylersen o arama silinebilir. Cihazındaki veriler senin kontrolündedir: tarayıcında sitenin verilerini temizle. Ayrıca İsveç veri koruma otoritesi <a href="https://www.imy.se/en/">IMY</a>'ye şikâyette bulunabilirsin.</p>
+
+<h2>Değişiklikler</h2>
+<p>Bu bilgiler değişirse bu sayfa güncellenir ve tarihi değişir. Tüm geçmiş <a href="https://github.com/tbelbek/sunpeek/commits/main/privacy.html">herkese açık depoda</a>.</p>
+</main>
+</body>
+</html>

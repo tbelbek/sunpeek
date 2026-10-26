@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SunPeek — Datenschutz</title>
+<meta name="description" content="Was SunPeek speichert, wohin deine Daten gehen und wie lange.">
+<link rel="stylesheet" href="legal.css">
+</head>
+<body>
+<main>
+<p><a href="./">← SunPeek</a></p>
+<h1>Datenschutz</h1>
+<p class="muted">Zuletzt aktualisiert: 26. Oktober 2026</p>
+<p class="langs"><a href="privacy.html">English</a> · <a href="privacy.sv.html">Svenska</a> · <a href="privacy.tr.html">Türkçe</a> · <a href="privacy.de.html">Deutsch</a> · <a href="privacy.es.html">Español</a> · <a href="privacy.fr.html">Français</a></p>
+
+<p>SunPeek schätzt, wie viel direkte Sonne eine Gebäudewand bekommt. Es gibt keine Konten, keine Werbung und keine Tracking-Cookies, und Daten werden weder verkauft noch für Werbezwecke weitergegeben. Diese Seite listet alles auf, was dein Gerät verlässt, wer es erhält und wie lange es aufbewahrt wird.</p>
+
+<h2>Wer verantwortlich ist</h2>
+<p>SunPeek ist ein kostenloses, nicht kommerzielles Projekt, das von seinem Entwickler in Schweden betrieben wird. Kontakt, Fragen und Anträge (Auskunft, Löschung, Widerspruch): <a href="https://github.com/tbelbek/sunpeek/issues">github.com/tbelbek/sunpeek/issues</a>. Wenn du nicht öffentlich schreiben möchtest, eröffne ein Issue, in dem du um einen privaten Kanal bittest, und schreib keine persönlichen Daten hinein.</p>
+
+<h2>Auf deinem Gerät</h2>
+<ul>
+<li><b>Einstellungen und Verlauf</b> (Sprache, Uhrzeitformat, Stockwerk, gespeicherte Wände mit ihren Adressen): in deinem Browser gespeichert (localStorage). Sie verlassen dein Gerät nie, und du kannst sie löschen, indem du die Website-Daten löschst.</li>
+<li><b>Kartendaten-Cache</b> (Gebäude, Geländekacheln, Sonnendaten): in deinem Browser gespeichert (IndexedDB), damit Orte, die du schon gesehen hast, schneller öffnen; Gebäude werden nach 90 Tagen aktualisiert, Gelände nach einem Jahr.</li>
+<li><b>Standort und Kompass</b>: werden nur genutzt, wenn du sie erlaubst, und nur innerhalb der Seite, um die Karte zu zentrieren und mit deinem Handy zu drehen. Deine genaue Position wird nirgendwohin gesendet; um Kartendaten zu laden, sendet die App den Bereich darum herum (siehe unten).</li>
+</ul>
+
+<h2>Der eigene Server von SunPeek</h2>
+<p>Ein gemeinsamer, anonymer Cache, damit ein Gebiet, das schon jemand geladen hat, für alle sofort öffnet. Er erhält nur, was zum Laden der Kartendaten nötig ist: Nummern von Gebietszellen (Quadrate von etwa 500 m), Kartenkachelnummern, eine ~10-km-Zelle für Sonnendaten, den Text, nach dem du suchst, und bei gespeicherten Wänden die Position der Wand, um ihre Adresse nachzuschlagen.</p>
+<table>
+<tr><th>Auf dem Server gespeichert</th><th>Dauer</th></tr>
+<tr><td>Gebäude eines Gebiets</td><td>90 Tage</td></tr>
+<tr><td>Bäume in einem Gebiet</td><td>90 Tage</td></tr>
+<tr><td>Geländekacheln</td><td>1 Jahr</td></tr>
+<tr><td>Sonnendaten für eine ~10-km-Zelle</td><td>400 Tage</td></tr>
+<tr><td>Overture-Gebäudekacheln</td><td>60 Tage</td></tr>
+<tr><td>Suchtext und seine Ergebnisse</td><td>30 Tage</td></tr>
+<tr><td>Adresse einer Position (auf ~1 m gerundet)</td><td>90 Tage</td></tr>
+</table>
+<p><b>Sonnencheck:</b> Wenn du etwa 150 m von der gewählten Wand entfernt bist und die Sonne auf ihrer Seite steht, kann SunPeek fragen, ob gerade Sonne auf die Wand scheint. Nur wenn du antwortest, werden die Antwort, die auf etwa 10 m gerundete Position der Wand, ihre Richtung, das Stockwerk und SunPeeks eigene Schätzung für diesen Moment gesendet. Das wird 2 Jahre gespeichert, um die Genauigkeit der Schätzungen zu messen, ohne IP-Adresse oder Gerätekennung.</p>
+<p>Keiner dieser Einträge enthält eine IP-Adresse, eine Gerätekennung oder ein Konto, daher können sie nicht mit dir in Verbindung gebracht werden. Der Server führt kein Zugriffsprotokoll. Um Missbrauch zu verhindern, zählt er Anfragen pro IP-Adresse eine Minute lang im Arbeitsspeicher; dieser Zähler wird nie auf die Festplatte geschrieben.</p>
+
+<h2>Andere Dienste, mit denen dein Browser kommuniziert</h2>
+<p>Wie bei jeder Website sendet dein Browser deine IP-Adresse und deinen Browsertyp an jeden Dienst, von dem er Daten lädt. Diese Dienste erhalten den Bereich, den du dir ansiehst, nie deine genaue GPS-Position:</p>
+<ul>
+<li><b>Cloudflare</b> (USA/EU): leitet den gesamten Verkehr zu sunpeek.uk, schützt ihn vor Angriffen und zählt, nur mit deiner Einwilligung, Besuche (siehe unten). Siehe die <a href="https://www.cloudflare.com/privacypolicy/">Datenschutzerklärung von Cloudflare</a>.</li>
+<li><b>Esri</b> (USA): Satellitenbildkacheln für den Bereich auf dem Bildschirm.</li>
+<li><b>unpkg</b>: die Dateien der Kartenbibliothek, einmal geladen; keine Standortdaten.</li>
+<li>Nur wenn der Server von SunPeek nicht antworten kann: <b>OpenStreetMap Overpass</b> (Gebäude), <b>Overture Maps / Amazon S3</b> (Gebäude als Ersatzquelle), <b>AWS Terrain Tiles</b> (Gelände), <b>Open-Meteo</b> (Höhe, Zeitzone, Sonnendaten) und <b>Photon by komoot</b> (Suchtext und die Position einer gespeicherten Wand).</li>
+</ul>
+<p>Die Datenkarte in der App (Mehr › SunPeek-Cache › Details) zeigt, wie viele Anfragen während deines Besuchs an jeden Dienst gingen.</p>
+
+<h2 id="analytics">Besuchsstatistik</h2>
+<p>Nur wenn du <b>Erlauben</b> wählst, wenn SunPeek fragt, lädt es <b>Cloudflare Web Analytics</b>, das die Seite, das Land, den Browsertyp und die Website erfasst, von der du kommst. Es verwendet keine Cookies, identifiziert dich nicht und verfolgt dich nicht über Websites hinweg; Cloudflare bewahrt die Rohdaten kurze Zeit auf und danach nur Summen. Wenn du <b>Nein danke</b> wählst, wird das Skript nie geladen. Du kannst deine Wahl jederzeit unter <i>Mehr › Besuchsstatistik</i> ändern.</p>
+
+<h2>Rechtsgrundlage</h2>
+<p>Die Bereitstellung des Dienstes, den du anforderst (Kartendaten laden, suchen, Adressen nachschlagen), und seine Sicherheit beruhen auf berechtigtem Interesse (Art. 6(1)(f) DSGVO). Der Zugriff auf Standort und Kompass beruht auf deiner Erlaubnis im Browser, die Besuchsstatistik auf deiner Einwilligung (Art. 6(1)(a) DSGVO und schwedisches Gesetz über elektronische Kommunikation, Kap. 9 §28); beides kannst du jederzeit widerrufen. Einstellungen und Verlauf auf deinem Gerät sind für den Dienst, den du nutzt, erforderlich und brauchen keine Einwilligung.</p>
+
+<h2>Deine Rechte</h2>
+<p>Du kannst Auskunft, Berichtigung oder Löschung verlangen und der Verarbeitung widersprechen. Da der Server keine Kennungen speichert, können wir Einträge, die zu dir gehören, meist nicht finden; eine Suche, die du gemacht hast, kann gelöscht werden, wenn du uns ihren genauen Text nennst. Über die Daten auf deinem Gerät bestimmst du selbst: Lösche die Website-Daten in deinem Browser. Du kannst dich auch bei der schwedischen Datenschutzbehörde <a href="https://www.imy.se/en/">IMY</a> beschweren.</p>
+
+<h2>Änderungen</h2>
+<p>Wenn sich etwas ändert, wird diese Seite aktualisiert und ihr Datum geändert. Die vollständige Historie steht im <a href="https://github.com/tbelbek/sunpeek/commits/main/privacy.html">öffentlichen Repository</a>.</p>
+</main>
+</body>
+</html>

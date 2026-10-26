@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SunPeek — Confidentialité</title>
+<meta name="description" content="Ce que SunPeek stocke, où vont vos données et pendant combien de temps.">
+<link rel="stylesheet" href="legal.css">
+</head>
+<body>
+<main>
+<p><a href="./">← SunPeek</a></p>
+<h1>Confidentialité</h1>
+<p class="muted">Dernière mise à jour : 26 octobre 2026</p>
+<p class="langs"><a href="privacy.html">English</a> · <a href="privacy.sv.html">Svenska</a> · <a href="privacy.tr.html">Türkçe</a> · <a href="privacy.de.html">Deutsch</a> · <a href="privacy.es.html">Español</a> · <a href="privacy.fr.html">Français</a></p>
+
+<p>SunPeek estime la quantité de soleil direct que reçoit le mur d'un bâtiment. Il n'y a ni compte, ni publicité, ni cookie de suivi, et aucune donnée n'est vendue ni partagée à des fins de marketing. Cette page liste tout ce qui quitte votre appareil, qui le reçoit et combien de temps c'est conservé.</p>
+
+<h2>Qui est responsable</h2>
+<p>SunPeek est un projet gratuit et non commercial, géré par son développeur en Suède. Contact, questions et demandes (accès, effacement, opposition) : <a href="https://github.com/tbelbek/sunpeek/issues">github.com/tbelbek/sunpeek/issues</a>. Si vous préférez ne pas écrire en public, ouvrez un ticket pour demander un canal privé, sans y mettre d'informations personnelles.</p>
+
+<h2>Sur votre appareil</h2>
+<ul>
+<li><b>Réglages et historique</b> (langue, format de l'heure, étage, murs enregistrés avec leurs adresses) : stockés dans votre navigateur (localStorage). Ils ne quittent jamais votre appareil et vous pouvez les supprimer en effaçant les données du site.</li>
+<li><b>Cache des données cartographiques</b> (bâtiments, tuiles de relief, données d'ensoleillement) : stocké dans votre navigateur (IndexedDB) pour que les lieux déjà vus s'ouvrent plus vite ; les bâtiments sont actualisés après 90 jours, le relief après un an.</li>
+<li><b>Position et boussole</b> : utilisées seulement si vous les autorisez, et uniquement dans la page, pour centrer la carte et la faire pivoter avec votre téléphone. Votre position exacte n'est envoyée nulle part ; pour obtenir les données cartographiques, l'application envoie la zone qui l'entoure (voir ci-dessous).</li>
+</ul>
+
+<h2>Le serveur de SunPeek</h2>
+<p>Un cache partagé et anonyme, pour qu'une zone déjà chargée par quelqu'un s'ouvre instantanément pour tous. Il ne reçoit que ce qui est nécessaire pour obtenir les données cartographiques : numéros de cellules de zone (carrés d'environ 500 m), numéros de tuiles, une cellule de ~10 km pour les données d'ensoleillement, le texte que vous recherchez et, pour les murs enregistrés, la position du mur pour trouver son adresse.</p>
+<table>
+<tr><th>Conservé sur le serveur</th><th>Durée</th></tr>
+<tr><td>Bâtiments d'une zone</td><td>90 jours</td></tr>
+<tr><td>Arbres d'une zone</td><td>90 jours</td></tr>
+<tr><td>Tuiles de relief</td><td>1 an</td></tr>
+<tr><td>Données d'ensoleillement d'une cellule de ~10 km</td><td>400 jours</td></tr>
+<tr><td>Tuiles de bâtiments Overture</td><td>60 jours</td></tr>
+<tr><td>Texte de recherche et ses résultats</td><td>30 jours</td></tr>
+<tr><td>Adresse d'une position (arrondie à ~1 m)</td><td>90 jours</td></tr>
+</table>
+<p><b>Vérification du soleil :</b> si vous êtes à environ 150 m du mur choisi et que le soleil est de son côté, SunPeek peut vous demander s'il y a du soleil sur le mur en ce moment. Seulement si vous répondez, la réponse, la position du mur arrondie à environ 10 m, son orientation, l'étage et l'estimation de SunPeek pour ce moment sont envoyées. Elles sont conservées 2 ans pour mesurer la précision des estimations, sans adresse IP ni identifiant d'appareil.</p>
+<p>Aucune de ces entrées ne contient d'adresse IP, d'identifiant d'appareil ni de compte ; elles ne peuvent donc pas être reliées à vous. Le serveur ne tient aucun journal d'accès. Pour empêcher les abus, il compte les requêtes par adresse IP en mémoire pendant une minute ; ce compteur n'est jamais écrit sur disque.</p>
+
+<h2>Autres services contactés par votre navigateur</h2>
+<p>Comme pour tout site web, votre navigateur envoie votre adresse IP et votre type de navigateur à chaque service qu'il interroge. Ces services reçoivent la zone que vous regardez, jamais votre position GPS exacte :</p>
+<ul>
+<li><b>Cloudflare</b> (États-Unis/UE) : achemine tout le trafic vers sunpeek.uk, le protège contre les attaques et, uniquement avec votre consentement, compte les visites (voir ci-dessous). Voir la <a href="https://www.cloudflare.com/privacypolicy/">politique de confidentialité de Cloudflare</a>.</li>
+<li><b>Esri</b> (États-Unis) : tuiles d'images satellite de la zone affichée.</li>
+<li><b>unpkg</b> : les fichiers de la bibliothèque cartographique, chargés une fois ; aucune donnée de position.</li>
+<li>Seulement quand le serveur de SunPeek ne peut pas répondre : <b>OpenStreetMap Overpass</b> (bâtiments), <b>Overture Maps / Amazon S3</b> (bâtiments de secours), <b>AWS Terrain Tiles</b> (relief), <b>Open-Meteo</b> (altitude, fuseau horaire, données d'ensoleillement) et <b>Photon by komoot</b> (texte de recherche et position d'un mur enregistré).</li>
+</ul>
+<p>La fiche de données de l'application (Plus › Cache SunPeek › Détails) indique combien de requêtes ont été envoyées à chaque service pendant votre visite.</p>
+
+<h2 id="analytics">Statistiques de visite</h2>
+<p>Uniquement si vous choisissez <b>Autoriser</b> quand SunPeek vous le demande, il charge <b>Cloudflare Web Analytics</b>, qui enregistre la page, le pays, le type de navigateur et le site d'où vous venez. Il n'utilise aucun cookie et ne vous identifie pas ni ne vous suit d'un site à l'autre ; Cloudflare conserve les données brutes peu de temps, puis seulement des totaux. Si vous choisissez <b>Non merci</b>, le script n'est jamais chargé. Vous pouvez modifier votre choix à tout moment dans <i>Plus › Statistiques de visite</i>.</p>
+
+<h2>Base juridique</h2>
+<p>Fournir le service que vous demandez (obtenir les données cartographiques, rechercher, trouver des adresses) et en assurer la sécurité repose sur l'intérêt légitime (art. 6(1)(f) RGPD). L'accès à la position et à la boussole repose sur votre autorisation dans le navigateur, et les statistiques de visite sur votre consentement (art. 6(1)(a) RGPD et loi suédoise sur les communications électroniques, chap. 9 §28) ; vous pouvez retirer l'un et l'autre à tout moment. Les réglages et l'historique conservés sur votre appareil sont nécessaires au service que vous utilisez et ne demandent pas de consentement.</p>
+
+<h2>Vos droits</h2>
+<p>Vous pouvez demander l'accès, la rectification ou l'effacement et vous opposer au traitement. Comme le serveur ne stocke aucun identifiant, nous ne pouvons généralement pas retrouver les entrées qui vous concernent ; une recherche que vous avez faite peut être supprimée si vous nous indiquez son texte exact. Les données sur votre appareil sont sous votre contrôle : effacez les données du site dans votre navigateur. Vous pouvez aussi déposer une réclamation auprès de l'autorité suédoise de protection des données, l'<a href="https://www.imy.se/en/">IMY</a>.</p>
+
+<h2>Modifications</h2>
+<p>Si cela change, cette page est mise à jour et sa date change. L'historique complet se trouve dans le <a href="https://github.com/tbelbek/sunpeek/commits/main/privacy.html">dépôt public</a>.</p>
+</main>
+</body>
+</html>
