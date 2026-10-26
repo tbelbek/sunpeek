@@ -10,6 +10,10 @@
 
 - **Search** an address (OpenStreetMap Nominatim) or paste `lat, lon`. Tapping anywhere else on the map moves your position there and centres the map; **Back to my location** appears once you're more than 30 m from your GPS fix.
 - **Light and dark mode** follow the system setting; flat icon set, 44 px touch targets.
+- **Address → building:** searching an address finds that building (Nominatim OSM id, else the building at or within 25 m of the point), picks its most sun-facing long wall and calculates right away; tap another wall to compare.
+- **Solar energy (opt-in checkbox):** angle of incidence at the selected time and clear-sky direct energy (kWh/m², Meinel model) for the wall or for a roof panel at 0–60° facing the same way. Clouds and diffuse light are not included; use PVGIS for yield.
+- **Where your data goes:** a live line shows that nothing is sent to SunPeek's own server and how many requests went to each map-data service; tap for the breakdown.
+- **Season bar** can be collapsed to the active season; on desktop all labels are shown.
 - **Tap a wall, get the answer:** today / summer / winter hours as big tiles, time windows below. Tapping open ground (or dragging the pin) moves your own position.
 - **Facade sun hours** for the selected day, summer solstice and winter solstice, with time windows (e.g. `13:40–18:10`).
 - **Shadows from surrounding buildings** (OpenStreetMap footprints and heights, multipolygons and building parts), using exact ray–polygon intersection up to 400 m.

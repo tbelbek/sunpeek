@@ -344,6 +344,67 @@ async () => {
       check('regresyon: konumuma dön → takip yeniden açık', a.sp.pt.distanceTo([51.4779, -0.0015]) < 1 && a.$('geo').classList.contains('on'));
       noErr('regresyon', a); a.close();
     },
+    // 19. Adresle git: o adresteki bina bulunur, cephe otomatik seçilir ve hesaplanır
+    async addressBuilding() {
+      const a = await open({ lang: 'en' });
+      await a.go(51.4779, -0.0015);
+      a.$('coord').value = '10 Downing Street, London'; a.$('go').click();
+      await until(() => a.$('sresults').querySelector('button'), 15000);
+      a.$('sresults').querySelector('button').click();
+      await until(() => a.sp.house, 90000);
+      const tiles = [...a.d.querySelectorAll('.tile')].map(t => t.innerText);
+      check('adres: bina bulundu ve cephe otomatik seçildi', a.sp.house && a.sp.pt.distanceTo([51.5034, -0.1276]) < 150, a.sp.house && a.sp.pt.distanceTo([51.5034, -0.1276]));
+      check('adres: sonuçlar hesaplandı (3 kutucuk)', tiles.length === 3, tiles.join(' | '));
+      check('adres: kullanıcıya bilgi verildi', /picked automatically/.test(a.$('gstat').textContent), a.$('gstat').textContent);
+      check('adres: seçilen duvar güneye yakın bakıyor', Math.abs(((a.sp.house.az - 180 + 540) % 360) - 180) <= 90, a.sp.house.az);
+      noErr('adres', a); a.close();
+    },
+    // 20. Mevsim çubuğu küçültülür/açılır, tercih kalır; masaüstünde tüm etiketler görünür
+    async seasonsBar() {
+      const a = await open({ lang: 'de' });
+      await a.go(51.4779, -0.0015);
+      const vis = () => [...a.$('seasons').querySelectorAll('button[data-s]')].filter(b => b.offsetParent).length;
+      check('mevsim çubuğu: başta 5 mevsim görünür', vis() === 5, vis());
+      a.$('seasonsToggle').click(); await sl(100);
+      check('mevsim çubuğu: küçültünce yalnız seçili kalır', vis() === 1 && a.$('seasons').classList.contains('min') && a.$('seasonsToggle').getAttribute('aria-expanded') === 'false', vis());
+      check('mevsim çubuğu: tercih saklandı', a.win.localStorage.getItem('seasonsMin') === '1');
+      a.close();
+      const b = await open({ lang: 'de', clear: false });
+      await b.go(51.4779, -0.0015);
+      check('mevsim çubuğu: yeniden açılışta küçük kalır', b.$('seasons').classList.contains('min'));
+      b.$('seasonsToggle').click(); await sl(100);
+      check('mevsim çubuğu: açınca 5 mevsim döner', [...b.$('seasons').querySelectorAll('button[data-s]')].filter(x => x.offsetParent).length === 5);
+      b.close();
+      const c = await open({ lang: 'fr', w: 1280, h: 800 });
+      await c.go(51.4779, -0.0015);
+      const s = c.$('seasons'), spans = [...s.querySelectorAll('button[data-s] span')].filter(x => x.offsetParent).length;
+      check('masaüstü: mevsimler tam genişlik, 5 etiket görünür, taşma yok', spans === 5 && s.scrollWidth <= s.clientWidth + 1, `${spans} ${s.scrollWidth}/${s.clientWidth}`);
+      noErr('mevsim çubuğu', c); c.close();
+    },
+    // 21. Koordinatla gidince bina otomatik seçilir; güneş enerjisi onay kutusu; veri dökümü (önbellekteki Greenwich verisi yeter)
+    async solarAndData() {
+      const a = await open({ lang: 'en' });
+      await a.go(51.4779, -0.0015);
+      const b = a.sp.B.buildings.filter(x => (x.x1 - x.x0) * (x.y1 - x.y0) > 80).sort((p, q) => Math.hypot(p.cx, p.cy) - Math.hypot(q.cx, q.cy))[2];
+      const { pip } = await import('/sun.js'); let [x, y] = [b.cx, b.cy]; if (!pip(x, y, b.ring)) { x = (b.ring[0][0] * 3 + b.cx) / 4; y = (b.ring[0][1] * 3 + b.cy) / 4; }
+      const ll = a.toLatLng(x, y); a.$('coord').value = `${ll[0].toFixed(7)}, ${ll[1].toFixed(7)}`; a.$('go').click();
+      await until(() => a.sp.house, 20000);
+      check('koordinat: bina otomatik seçildi', a.sp.house && a.sp.house.id === b.id, a.sp.house?.id);
+      check('enerji: varsayılan kapalı', !a.d.querySelector('.energy') && !a.$('surf'));
+      a.$('solarchk').click(); await sl(300);
+      const wall = parseFloat((a.d.querySelector('.energy').innerText.match(/summer ([\d.]+)/) || [])[1]);
+      a.$('surf').value = '35'; a.$('surf').dispatchEvent(new a.win.Event('change')); await sl(300);
+      const roof = parseFloat((a.d.querySelector('.energy').innerText.match(/summer ([\d.]+)/) || [])[1]);
+      check('enerji: açılınca açı ve kWh/m² görünür, 35° panel > duvar (yaz)', /Sun angle on the surface|isn't on this surface/.test(a.d.querySelector('.energy').innerText) && roof > wall && wall > 0, `${wall} → ${roof}`);
+      check('enerji: tercih saklandı', a.win.localStorage.getItem('solar') === '1');
+      a.$('solarchk').click(); await sl(200);
+      check('enerji: kapatınca gizlenir', !a.d.querySelector('.energy'));
+      check('veri: "SunPeek\'e giden: hiçbir şey" ve istek sayısı', /Sent to SunPeek: nothing · map data services: \d+ requests/.test(a.$('nettxt').textContent), a.$('nettxt').textContent);
+      a.$('netbtn').click(); await sl(150);
+      check('veri: döküm kartı servisleri listeler', a.$('modal').open && a.d.querySelectorAll('#card table.net tr').length === 7);
+      a.$('netClose').click();
+      noErr('enerji/veri', a); a.close();
+    },
     // 14. Masaüstü düzeni
     async desktop() {
       const a = await open({ lang: 'en', w: 1280, h: 800 });

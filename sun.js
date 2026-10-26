@@ -239,11 +239,28 @@ export function hmIn(date, tz) {
   return { h: x.getUTCHours(), m: x.getUTCMinutes() };
 }
 
+// ---------- güneş paneli ----------
+// Geliş açısı: güneş ışını ile yüzey normali arasındaki açı (0° = dik vuruyor, 90° = sıyırıyor), derece.
+// tilt: yüzeyin yataydan eğimi (90 = duvar, 0 = düz çatı), surfAz: yüzeyin baktığı yön.
+export function incidence(alt, az, tilt, surfAz) {
+  const c = Math.cos(alt * rad) * Math.sin(tilt * rad) * Math.cos((az - surfAz) * rad) + Math.sin(alt * rad) * Math.cos(tilt * rad);
+  return Math.acos(Math.max(-1, Math.min(1, c))) * deg;
+}
+// Açık gökte doğrudan ışınım (DNI), W/m²: Meinel modeli 1353·0,7^(AM^0,678); hava kütlesi Kasten–Young.
+// Bulut ve dağınık (diffuse) ışık dahil değil: üst sınır tahmini, gerçek üretim için PVGIS gibi bir model gerekir.
+export function clearSkyDNI(alt) {
+  if (alt <= 0) return 0;
+  const z = 90 - alt, am = 1 / (Math.cos(z * rad) + 0.50572 * Math.pow(96.07995 - z, -1.6364));
+  return 1353 * Math.pow(0.7, Math.pow(am, 0.678));
+}
+
 // Bir cephenin gün boyu güneşi. env: {el: Overpass elemanları, ground: zemin fn|null, hz: ufuk|null}.
 // f: {lat, lon, az, id}, cephe noktası binanın 0,4 m dışında. eye: pencerenin zeminden yüksekliği.
 // state: 'vis' güneş ulaşıyor, 'block' bina kesiyor, 'terrain' tepe kesiyor, 'behind' güneş cephenin arkasında;
 // güneş ufkun altındaysa dilim yok. Gün (y, m, d), tz saat diliminde (null = tarayıcı).
-export function facadeDay(env, f, eye, y, m, d, step = 5, tz = null) {
+// tilt: 90 = duvar (varsayılan); daha küçükse aynı yöne bakan çatı paneli (eye o zaman çatı yüksekliği olmalı).
+// Her dilime geliş açısı (inc) eklenir; vis dilimlerinden açık gök doğrudan enerji kWh/m² (energy) toplanır.
+export function facadeDay(env, f, eye, y, m, d, step = 5, tz = null, tilt = 90) {
   const { buildings, own } = localize(env.el, f.lat, f.lon, env.ground), all = buildings.concat(own);
   const zEye = (env.ground ? env.ground(f.lat, f.lon) : 0) + eye, slots = [];
   // Gerçek anlar üzerinden yerel gece yarısından ertesi gece yarısına: yaz saati günlerinde 23/25 saat doğru sayılır
@@ -251,8 +268,10 @@ export function facadeDay(env, f, eye, y, m, d, step = 5, tz = null) {
   for (let ms = t0; ms < t1; ms += step * 60000) {
     const t = new Date(ms), p = sunpos(f.lat, f.lon, t);
     if (p.alt <= 0) continue;
-    const front = Math.abs(((p.az - f.az + 540) % 360) - 180) < 85;
-    slots.push({ t, alt: p.alt, az: p.az, state: !front ? 'behind' : env.hz && p.alt < horizonAlt(env.hz, p.az, zEye) ? 'terrain' : blocked(all, p.alt, p.az, eye, f.id) ? 'block' : 'vis' });
+    const inc = incidence(p.alt, p.az, tilt, f.az);
+    // duvar: güneş cephe düzleminin 85° içinde olmalı (eski ölçüt korunur); eğik panel: geliş açısı < 85°
+    const front = tilt >= 90 ? Math.abs(((p.az - f.az + 540) % 360) - 180) < 85 : inc < 85;
+    slots.push({ t, alt: p.alt, az: p.az, inc, state: !front ? 'behind' : env.hz && p.alt < horizonAlt(env.hz, p.az, zEye) ? 'terrain' : blocked(all, p.alt, p.az, eye, f.id) ? 'block' : 'vis' });
   }
   const windows = [];
   for (const s of slots) {
@@ -261,7 +280,8 @@ export function facadeDay(env, f, eye, y, m, d, step = 5, tz = null) {
     if (w && +w[1] === +s.t) w[1] = end; else windows.push([s.t, end]);
   }
   const hours = st => slots.filter(s => st.includes(s.state)).length * step / 60;
-  return { slots, windows, visH: hours(['vis']), frontH: hours(['vis', 'block', 'terrain']) };
+  const energy = slots.reduce((e, s) => e + (s.state === 'vis' ? clearSkyDNI(s.alt) * Math.cos(s.inc * rad) * step / 60 : 0), 0) / 1000;
+  return { slots, windows, visH: hours(['vis']), frontH: hours(['vis', 'block', 'terrain']), energy };
 }
 
 // Yükseklik güveni: sonucu etkileyebilecek binalardan kaçının yüksekliği tahmini (OSM'de etiket yok).

@@ -1,6 +1,6 @@
 // node test.mjs — sun.js'i bağımsız bir NOAA (Python) uygulamasına ve sunrise-sunset.org değerlerine karşı doğrular.
 import assert from 'node:assert/strict';
-import { sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, height, maxFloor, zoned, hmIn, heightConfidence, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, HZ_D, HZ_STEP } from './sun.js';
+import { sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, height, maxFloor, zoned, hmIn, heightConfidence, incidence, clearSkyDNI, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, HZ_D, HZ_STEP } from './sun.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} != ${b}`);
 const utcHM = t => new Date(Math.floor(t / 60000) * 60000).toISOString().slice(11, 16); // saniyeyi keser
@@ -147,6 +147,22 @@ assert.equal(height({ height: 'Infinity' }).h, 9); assert.equal(height({ height:
   assert.ok(first.h >= 5 && first.h <= 7, `29 Mart gün doğumu yerel ~06 ${JSON.stringify(first)}`);
 }
 console.log('sağlamlık ok');
+
+// Güneş paneli: geliş açısı ve açık gök ışınımı
+near(incidence(30, 180, 90, 180), 30, 1e-9, 'güneye bakan duvar, güneş güneyde 30° → geliş 30°');
+near(incidence(90, 0, 0, 180), 0, 1e-9, 'düz çatı, güneş tepede → geliş 0°');
+near(incidence(30, 180, 60, 180), 0, 1e-9, '60° eğik panel güneye, güneş 30° → dik');
+near(incidence(30, 90, 90, 180), Math.acos(0) * 180 / Math.PI, 1e-9, 'yandan gelen ışın → 90°');
+assert.equal(clearSkyDNI(-1), 0);
+assert.ok(clearSkyDNI(60) > 850 && clearSkyDNI(60) < 1000, `öğle DNI ~900 W/m² ${clearSkyDNI(60)}`);
+assert.ok(clearSkyDNI(5) < clearSkyDNI(30), 'alçak güneş daha zayıf');
+{
+  const f = { lat: 51.48, lon: 0, az: 180, id: 0 };
+  const wall = facadeDay({ el: [] }, f, 1.5, 2026, 6, 21, 5, 'Europe/London'), roof = facadeDay({ el: [] }, f, 1.5, 2026, 6, 21, 5, 'Europe/London', 35);
+  assert.ok(roof.energy > wall.energy && wall.energy > 0, `yazın 35° çatı > duvar: ${roof.energy.toFixed(2)} > ${wall.energy.toFixed(2)} kWh/m²`);
+  assert.ok(roof.energy > 4 && roof.energy < 9, `açık gök yaz günü 35° güney panel ~6-8 kWh/m²: ${roof.energy.toFixed(2)}`);
+}
+console.log('panel ok');
 
 // Çeviriler: her dilde İngilizcedeki tüm anahtarlar ve aynı {yer tutucular} olmalı
 {

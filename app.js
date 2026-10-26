@@ -7,15 +7,21 @@ const icon = (n, c = 'ic') => `<svg class="${c}" aria-hidden="true"><use href="#
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
 const map = L.map('map', { rotate: true, touchRotate: false, rotateControl: false, bearing: 0, zoomControl: false }).setView([51.4779, -0.0015], 17);
 L.control.zoom({ position: 'topright' }).addTo(map); // telefonda gizli (iki parmak); sol üst arama, sağ alt düğmeler
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+// Veri şeffaflığı: bu oturumda hangi servise kaç istek gitti (SunPeek'in kendi sunucusuna hiçbiri gitmez)
+const NET = { overpass: 0, elev: 0, tz: 0, nom: 0, tiles: 0 };
+function net(k) { NET[k]++; const el = document.getElementById('nettxt'); if (el) el.textContent = tr('netLine', { n: Object.values(NET).reduce((a, b) => a + b, 0) }); }
+const tiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 20, maxNativeZoom: 19, attribution: 'Esri World Imagery · buildings © OpenStreetMap'
-}).addTo(map);
+});
+tiles.on('tileloadstart', () => net('tiles')).addTo(map); // dinleyici önce: ilk karolar da sayılır
 const bLayer = L.layerGroup().addTo(map), rLayer = L.layerGroup().addTo(map);
 const marker = L.marker([51.4779, -0.0015], { draggable: true }).addTo(map);
 const cone = L.polygon([], { color: '#4af', weight: 1, fillOpacity: 0.25, interactive: false }).addTo(map);
 let acc = null, pt = null, accM = null, gAlt = null, gAltAcc = null, B = { buildings: [], own: [] }, req = 0;
 let last = null; // son çekim: {el, ground, hz, lat, lng} — binalar + zemin kotu + ufuk
 let cmpState = 'off'; // off | asking | waiting | nodata | denied | none — üstteki okta görünür
+let solar = false; // enerji bölümü onay kutusuyla açılır (tercih saklanır; lsGet tanımlanınca okunur)
+let tilt = 90; // yüzey: 90 = duvar, daha küçük = aynı yöne bakan çatı paneli
 let follow = false; // GPS takip modu (konum düğmesi); elle seçimde kapanır
 let raw = null, heading = null, headAcc = null, compassOn = false, watchId = null, house = null, lastRender = 0, wake = null, gpsPt = null;
 let katSrc = null, katFix = null; // katSrc 'gps': kat GPS'ten geldi; katFix: önerilen düzeltme
@@ -38,6 +44,7 @@ let todayStr = $('date').value; // konumun saat dilimi gelince o yerin bugünün
 let dateTouched = false;
 // localStorage sarmalayıcıları: bozuk JSON silinir, dolu depo/erişimsizlik uygulamayı çökertmez
 const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
+solar = !!lsGet('solar');
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); return true; } catch { return false; } };
 const lsJSON = (k, ok = () => true) => { const v = lsGet(k); if (v == null) return null; try { const x = JSON.parse(v); if (ok(x)) return x; } catch {} try { localStorage.removeItem(k); } catch {} return null; };
 const ymd = () => $('date').value.split('-').map(Number);
@@ -67,7 +74,7 @@ function draw() {
   const origin = house ? L.latLng(house.lat, house.lon) : pt;
 
   if (house) { // cephe modu: ışınlar cepheden çıkar
-    house.day = facadeCached($('date').value, () => facadeDay(house.env, house, eye(), y, m, d, 5, TZ));
+    house.day = facadeCached($('date').value, () => facadeDay(house.env, house, surfEye(), y, m, d, 5, TZ, tilt));
     for (const s of house.day.slots) { const lt = hmIn(s.t, TZ); if (lt.m % 30) continue;
       const full = lt.m === 0, end = ray(origin, s.az, full ? 150 : 120, { color: COL[s.state], weight: full ? 3 : 2, opacity: s.state === 'behind' ? 0.5 : 0.85 });
       if (full) label(end, lt.h);
@@ -137,20 +144,24 @@ function obsState(alt, az) {
   return blocked(B.buildings, alt, az, eye()) ? 'block' : 'vis';
 }
 // Cephe hesabı ağır (3 gün × 288 dilim): tarih+kat değişmedikçe yeniden hesaplama
-function facadeCached(key, fn) { key += '|' + kat() + '|' + TZ; return (house.cache[key] ??= fn()); }
+function facadeCached(key, fn) { key += '|' + kat() + '|' + TZ + '|' + tilt; return (house.cache[key] ??= fn()); }
+// Duvar: seçili kattaki pencere; çatı paneli: binanın tepesi
+const surfEye = () => tilt < 90 ? house.h + 0.5 : eye();
 
 function drawHouse() {
   const el = $('house');
   $('empty').style.display = house ? 'none' : '';
   if (!house) { el.style.display = 'none'; return; }
   const [y] = ymd(), fmt = r => r.windows.map(([a, b]) => `${hm(a)}–${hm(b)}`).join(', ') || tr('none');
-  const S = SEASON(house.lat), on = md => { const [mm, dd] = md.split('-').map(Number); return facadeCached(`${y}-${md}`, () => facadeDay(house.env, house, eye(), y, mm, dd, 5, TZ)); };
+  const S = SEASON(house.lat), on = md => { const [mm, dd] = md.split('-').map(Number); return facadeCached(`${y}-${md}`, () => facadeDay(house.env, house, surfEye(), y, mm, dd, 5, TZ, tilt)); };
   const sum = on(S.summer), win = on(S.winter);
   el.style.display = '';
   saveHist({ day: house.day, sum, win, fmt });
   // Önce cevap: üç büyük kutucuk (seçili gün / yaz / kış), altında saat aralıkları
   const [, mo, da] = ymd(), dayLbl = $('date').value === todayStr ? tr('today') : dm(`${pad(mo)}-${pad(da)}`);
   const c = getConf(), est = c && c.level !== 'ok', ap = est ? '≈ ' : '';
+  const tSel = timeAt(+$('time').value), sl = house.day.slots.find(s => Math.abs(s.t - tSel) <= 150000);
+  const incTxt = sl && sl.state !== 'behind' && sl.inc < 90 ? tr('incAt', { t: hm(tSel), a: sl.inc.toFixed(0) }) : tr('incNone', { t: hm(tSel) });
   const tile = (lbl, r) => `<div class="tile"><b>${ap}${dur(r.visH)}</b><span>${lbl}</span></div>`;
   const addr = hist().find(e => e.key === `${house.id}:${Math.round(house.az)}`)?.addr;
   el.innerHTML = `${est ? `<button id="estrow" class="estrow" type="button">${icon('triangle-alert')}<span>${tr('estRow')}</span><u>${tr('details')}</u></button>` : ''}<div class="tiles">${tile(dayLbl, house.day)}${tile(tr('summerSol', { d: dm(S.summer) }), sum)}${tile(tr('winterSol', { d: dm(S.winter) }), win)}</div>
@@ -158,9 +169,15 @@ function drawHouse() {
     <div class="facrow">${icon('house')}<div><div class="st">${esc(cap(tr('wallFacing', { dir: dirsLong[Math.round(house.az / 45) % 8] })))} · ${esc(floorName(kat()))}</div>
       ${addr ? `<div>${esc(addr)}</div>` : ''}<div class="muted">${esc(tr('facadeDetail', { az: house.az.toFixed(0), h: house.h.toFixed(0), est: house.guessed ? tr('estimated') : '', e: eye().toFixed(1) }))}</div></div>
       <button id="unpick" class="iconbtn" aria-label="${tr('unpick')}" title="${tr('unpick')}">${icon('x')}</button></div>
+    <label class="chk"><input type="checkbox" id="solarchk"${solar ? ' checked' : ''}> ${esc(tr('solarToggle'))}</label>
+    ${solar ? `<div class="field"><label for="surf">${tr('surface')}</label><select id="surf">${[90, 60, 45, 35, 30, 15, 0].map(v => `<option value="${v}"${v === tilt ? ' selected' : ''}>${esc(v === 90 ? tr('surfWall') : v === 0 ? tr('surfFlat') : tr('surfRoof', { t: v }))}</option>`).join('')}</select></div>
+    <div class="energy">${esc(incTxt)}<br>${esc(tr('energyRow', { d: dayLbl, e: house.day.energy.toFixed(1), s: sum.energy.toFixed(1), w: win.energy.toFixed(1) }))}</div>
+    <div class="muted">${esc(tr('energyNote') + (tilt < 90 ? ' ' + tr('roofNote', { h: (house.h + 0.5).toFixed(0) }) : ''))}</div>` : ''}
     ${compassOn ? `<button id="calib" class="btn" style="width:100%;margin-top:8px">${icon('ruler')}${tr('calib')}</button><div class="muted" style="margin-top:4px">${tr('calibHelp', { c: (cmpOff >= 0 ? '+' : '') + cmpOff.toFixed(0) })}</div>` : ''}`;
   $('unpick').onclick = () => { house = null; drawBuildings(); draw(); };
   $('estrow')?.addEventListener('click', openConf);
+  if ($('surf')) $('surf').onchange = () => { tilt = +$('surf').value; draw(); };
+  $('solarchk').onchange = () => { solar = $('solarchk').checked; lsSet('solar', solar ? '1' : ''); if (!solar) tilt = 90; draw(); };
   if ($('calib')) $('calib').onclick = () => { // duvara bakan telefonun gerçek yönü = cephe yönü + 180°
     if (raw == null) return;
     cmpOff = ((house.az + 180 - raw + 540) % 360) - 180; localStorage.setItem('cmpOff', cmpOff); heading = null;
@@ -192,7 +209,7 @@ function saveHist({ day, sum, win, fmt }) {
 // Nominatim kullanım politikası: uygulama genelinde ≤1 istek/sn, toplu sorgu yok. Tüm çağrılar bu kuyruktan geçer.
 let nomChain = Promise.resolve();
 function nominatim(url) {
-  const run = nomChain.then(() => fetch(url, { signal: AbortSignal.timeout(10000) }));
+  const run = nomChain.then(() => { net('nom'); return fetch(url, { signal: AbortSignal.timeout(10000) }); });
   nomChain = run.catch(() => {}).then(() => new Promise(r => setTimeout(r, 1100)));
   return run;
 }
@@ -300,6 +317,7 @@ async function fetchOverpass(lat, lng) {
   let err;
   for (const url of OVERPASS) { // ana sunucu yavaş (30+ sn) ya da 429/502/504 verebilir, sırayla aynalar
     try {
+      net('overpass');
       const r = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: q }), signal: AbortSignal.timeout(url === OVERPASS[0] ? 60000 : 30000) });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return (await r.json()).elements;
@@ -316,6 +334,7 @@ async function fetchElev(pts, key) {
   for (let i = 0; i < pts.length; i += 100) {
     const c = pts.slice(i, i + 100), url = `https://api.open-meteo.com/v1/elevation?latitude=${c.map(p => p[0].toFixed(5))}&longitude=${c.map(p => p[1].toFixed(5))}`;
     for (let k = 0; ; k++) {
+      net('elev');
       const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
       if (r.ok) { out.push(...(await r.json()).elevation); break; }
       if (r.status !== 429 || k === 2) throw new Error('elevation HTTP ' + r.status);
@@ -329,9 +348,31 @@ async function fetchElev(pts, key) {
 // Yanıt vermeyen servis: başarısız kısım kaydedilmez (sonraki harekette yeniden denenir), görünür uyarı + ↻ düğmesi,
 // 8 sn sonra bir kez de kendiliğinden yeniden denenir. Başarılı parçalar localStorage'dan gelir, tekrar indirilmez.
 let autoRetry = null;
+// Adres/koordinatla gidince: o adresteki binayı bul (Nominatim OSM kimliği, yoksa noktayı içeren ya da 25 m içindeki bina)
+// ve cepheyi otomatik seç. Varsayılan: güneşe en çok bakan uzun duvar; kullanıcı başka duvara dokunarak değiştirir.
+let pendingPick = null;
+function autoPick() {
+  const p = pendingPick;
+  if (!p || !pt || !last || pt.distanceTo([p.lat, p.lon]) > 5) return;
+  pendingPick = null;
+  const all = B.buildings.concat(B.own);
+  let b = (p.osmId != null && all.find(x => x.id === p.osmId && Math.hypot(x.cx, x.cy) < 60)) || B.own[0] || pickEdge(all, 0, 0, 25)?.b;
+  if (!b) return;
+  const want = pt.lat >= 0 ? 180 : 0, r = b.ring;
+  let best = null;
+  for (let i = 0; i < r.length - 1; i++) {
+    const [ax, ay] = r[i], [bx, by] = r[i + 1], L = Math.hypot(bx - ax, by - ay);
+    if (L < 5) continue;
+    const e = pickEdge([b], (ax + bx) / 2, (ay + by) / 2, 1);
+    if (!e || e.i !== i) continue;
+    const d = Math.abs(((e.az - want + 540) % 360) - 180);
+    if (!best || d < best.d - 1 || (Math.abs(d - best.d) <= 1 && L > best.L)) best = { e, d, L };
+  }
+  if (best) { setHouse(best.e); $('gstat').textContent = tr('autoWall'); }
+}
 async function refreshBuildings(force = false, attempt = 0) {
   const id = ++req; // her konum geçişi: bekleyen eski yanıt artık uygulanmaz
-  if (!force && last?.complete && pt.distanceTo([last.lat, last.lng]) < 120) { B = localize(last.el, pt.lat, pt.lng, last.ground); statB(); drawBuildings(); return draw(); }
+  if (!force && last?.complete && pt.distanceTo([last.lat, last.lng]) < 120) { B = localize(last.el, pt.lat, pt.lng, last.ground); statB(); drawBuildings(); draw(); return autoPick(); }
   clearTimeout(autoRetry);
   // Çekim merkezi ~100 m'lik ızgaraya oturtulur: önbellek isabeti için; 400 m yarıçap yine de bolca kapsar
   const lat = +pt.lat.toFixed(3), lng = +pt.lng.toFixed(3);
@@ -354,7 +395,7 @@ async function refreshBuildings(force = false, attempt = 0) {
     $('retry').onclick = () => refreshBuildings(true, 1);
     if (attempt === 0) autoRetry = setTimeout(() => refreshBuildings(true, 1), 8000);
   } else if ($('retry')) $('gstat').textContent = '';
-  drawBuildings(); draw();
+  drawBuildings(); draw(); autoPick();
 }
 function statB() {
   const g = B.buildings.filter(b => b.guessed).length;
@@ -394,6 +435,7 @@ async function fetchTZ(lat, lng, retried = false) {
   let tz = lsGet(key);
   if (tz && !validTZ(tz)) { try { localStorage.removeItem(key); } catch {} tz = null; }
   if (!tz) try {
+    net('tz');
     const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lng.toFixed(3)}&timezone=auto&forecast_days=1&daily=sunrise`, { signal: AbortSignal.timeout(10000) });
     tz = (await r.json()).timezone;
     if (validTZ(tz)) lsSet(key, tz); else tz = null; // doğrulanmadan saklanmaz
@@ -507,7 +549,7 @@ $('sform').onsubmit = async e => {
   if (!q) return;
   const m = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/);
   const seq = ++searchSeq;
-  const jump = (la, lo) => { follow = false; house = null; drawBuildings(); setPoint(la, lo); };
+  const jump = (la, lo, osmId = null) => { follow = false; house = null; drawBuildings(); pendingPick = { lat: la, lon: lo, osmId }; setPoint(la, lo); };
   if (m && Math.abs(+m[1]) <= 90 && Math.abs(+m[2]) <= 180) { box.innerHTML = ''; $('coord').blur(); return jump(+m[1], +m[2]); }
   box.innerHTML = `<span class="muted">${tr('loading')}</span>`;
   try {
@@ -518,7 +560,7 @@ $('sform').onsubmit = async e => {
     box.innerHTML = res.length ? '' : `<span class="muted">${tr('noResults')}</span>`;
     for (const x of res) {
       const b = document.createElement('button'); b.type = 'button'; b.textContent = String(x.display_name).slice(0, 300);
-      b.onclick = () => { searchSeq++; box.innerHTML = ''; $('coord').value = b.textContent; $('coord').blur(); jump(+x.lat, +x.lon); };
+      b.onclick = () => { searchSeq++; box.innerHTML = ''; $('coord').value = b.textContent; $('coord').blur(); jump(+x.lat, +x.lon, /^(way|relation)$/.test(x.osm_type) ? +x.osm_id : null); };
       box.appendChild(b);
     }
   } catch (err) { if (seq === searchSeq) box.innerHTML = `<span class="muted">${esc(tr('searchErr', { e: err.message }))}</span>`; }
@@ -570,6 +612,15 @@ $('play').onclick = () => {
   }, 6000 / ((z - a) / 5));
 };
 $('date').addEventListener('input', seasonMark);
+// Mevsim çubuğu küçültülebilir (yalnız seçili mevsim + ▶ kalır); tercih saklanır
+function seasonsMin(on) {
+  $('seasons').classList.toggle('min', on);
+  $('seasonsToggle').innerHTML = icon(on ? 'chevron-right' : 'chevron-left');
+  const l = tr(on ? 'seasonsShow' : 'seasonsHide');
+  $('seasonsToggle').setAttribute('aria-label', l); $('seasonsToggle').title = l; $('seasonsToggle').setAttribute('aria-expanded', String(!on));
+}
+$('seasonsToggle').onclick = () => { const on = !$('seasons').classList.contains('min'); lsSet('seasonsMin', on ? '1' : ''); seasonsMin(on); };
+seasonsMin(!!lsGet('seasonsMin'));
 seasonMark();
 $('kat').oninput = () => { katSrc = null; draw(); };
 $('katwarn').onclick = $('katmsg').onclick = e => { e.preventDefault(); if (katFix == null) return; $('kat').value = katFix; katSrc = null; draw(); };
@@ -594,6 +645,14 @@ function showIntro(help = false) {
   $('introSkip').onclick = () => { lsSet('introSeen', 1); closeCard(); if (!help) { if (!pt) setPoint(51.4779, -0.0015); $('coord').focus(); } };
 }
 $('helpbtn').onclick = () => showIntro(true);
+$('netbtn').onclick = () => {
+  const row = (k, n) => `<tr><td>${esc(tr(k))}</td><td>${n == null ? '' : esc(tr('reqs', { n }))}</td></tr>`;
+  openCard(`<h2 id="cardtitle">${tr('netTitle')}</h2><p>${tr('netOwn')}</p>
+    <table class="net">${row('dsOverpass', NET.overpass)}${row('dsElev', NET.elev)}${row('dsTZ', NET.tz)}${row('dsNom', NET.nom)}${row('dsTiles', NET.tiles)}${row('dsCdn')}${row('dsCf')}</table>
+    <div class="actions"><button class="btn" id="netClose">${tr('close')}</button></div>`);
+  $('netClose').onclick = closeCard;
+};
+net('tiles'); NET.tiles--; // ilk metni yaz
 // ❗ Yükseklik güveni: gölge düşürebilecek binaların çoğunun yüksekliği tahminiyse haritada uyar
 let conf = null;
 // seçili cepheye / bina listesine bağlı önbellek: kaydırıcı ve oynatma her karede yeniden hesaplatmasın
