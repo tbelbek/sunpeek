@@ -6,7 +6,7 @@ ARG E2E=0
 # ESRI_KEY: ArcGIS Location Platform API anahtarı (sunucunun .env'inden); repoda tutulmaz
 ARG ESRI_KEY=
 WORKDIR /w
-COPY index.html app.js sun.js i18n.js tiles.js tz.js cache.js og.jpg ./
+COPY index.html app.js sun.js i18n.js tiles.js tz.js cache.js og.jpg privacy.html terms.html legal.css llms.txt ./
 RUN set -eu; \
     if [ "$E2E" != 1 ]; then sed -i '/window.__sp = /d' app.js; ! grep -q '__sp' app.js; fi; \
     if [ -n "$ESRI_KEY" ]; then sed -i "s#'__ESRI_KEY__'#'$ESRI_KEY'#g" app.js; grep -q "$ESRI_KEY" app.js; fi; \

@@ -1,0 +1,28 @@
+# SunPeek
+
+> SunPeek estimates how many hours of direct sunlight a building wall gets today, at midsummer and at midwinter, and at what times, for anywhere in the world. Tap a wall on the satellite map (or point a phone at it); it accounts for the buildings around it (OpenStreetMap heights), sloping ground, distant hills and the floor you would live on. Free, no account, runs in the browser. Results are clear-sky estimates with a confidence level and a range.
+
+Useful for house and flat hunting ("does this balcony get afternoon sun in winter?") and rough solar-panel potential. Languages: English, Svenska, Türkçe, Deutsch, Español, Français.
+
+## Using it
+
+- [SunPeek](https://sunpeek.uk/): the app.
+- Link to a place: `https://sunpeek.uk/?at=<lat>,<lon>` opens on that point and selects the wall of the building there, e.g. [Gothenburg example](https://sunpeek.uk/?at=57.6935,11.9575).
+- Output for a selected wall: hours of direct sun today / midsummer / midwinter, the time windows, a confidence level (high / medium / low) with a range, the first floor with no shadow from other buildings, and optional solar energy estimates.
+
+## How it works and its limits
+
+- [README](https://github.com/tbelbek/sunpeek#readme): method, data sources, accuracy, calibration of the confidence model.
+- Sun position from NOAA formulas; shadows from building footprints extruded to their height; terrain and hills up to 8 km.
+- Building heights come from OpenStreetMap tags (height, floors) or are estimated; trees, balconies and buildings missing from the map are not included; clear sky assumed.
+- In hold-out tests in 9 European cities the true result fell inside the shown range 88–99% of the time, and 96% of hourly sun/shadow rays were correct.
+
+## Policies
+
+- [Privacy](https://sunpeek.uk/privacy.html): what is stored (anonymous shared cache, no IP addresses), retention, third-party services.
+- [Terms](https://sunpeek.uk/terms.html): estimates only, not professional advice, fair use (no scraping or bulk queries).
+
+## Optional
+
+- [Source code](https://github.com/tbelbek/sunpeek)
+- [Report a wrong result](https://github.com/tbelbek/sunpeek/issues)

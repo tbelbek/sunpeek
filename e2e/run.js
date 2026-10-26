@@ -10,10 +10,11 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
   const until = async (fn, ms = 90000, step = 300) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = fn(); if (v) return v; } catch {} await sl(step); } return null; };
 
   // Uygulamayı aç: storage = localStorage'a önceden yazılacaklar (aynı köken, iframe ile paylaşılır)
-  async function open({ lang = 'sv', intro = true, w = 390, h = 844, storage = {}, clear = true, q = '' } = {}) {
+  async function open({ lang = 'sv', intro = true, w = 390, h = 844, storage = {}, clear = true, q = '', consent = false } = {}) {
     if (clear) for (const k of Object.keys(localStorage)) if (!/^(ov:|zg:|hz:|tz:)/.test(k)) localStorage.removeItem(k); // veri önbellekleri kalsın
     if (lang) localStorage.setItem('lang', lang);
     if (intro) localStorage.setItem('introSeen', '1');
+    if (!consent && clear) localStorage.setItem('stats', '0'); // testlerde istatistik betiği yüklenmesin, izin kutusu araya girmesin
     for (const [k, v] of Object.entries(storage)) localStorage.setItem(k, v);
     const f = document.createElement('iframe');
     f.style.cssText = `width:${w}px;height:${h}px;position:fixed;left:-${w + 50}px;top:0;border:0`;
@@ -453,6 +454,22 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
       await sl(4000);
       check('bağlantı: ?at konumunda kalır', a.sp.pt && Math.abs(a.sp.pt.lat - 57.6935) < 0.001 && Math.abs(a.sp.pt.lng - 11.9575) < 0.001, a.sp.pt && `${a.sp.pt.lat},${a.sp.pt.lng}`);
       noErr('bağlantı', a); a.close();
+    },
+    // İstatistik izni: ilk ziyarette sorulur, iki seçenek eşit, "Hayır"da betik yüklenmez, tercih kalır ve değiştirilebilir
+    async consent() {
+      const a = await open({ lang: 'en', consent: true });
+      const beacon = () => !!a.d.querySelector('script[data-cf-beacon]');
+      check('izin: ilk ziyarette kutu görünür, betik yok', !a.$('consent').hidden && !beacon());
+      check('izin: iki düğme aynı görünüşte', a.$('consentYes').className === a.$('consentNo').className, a.$('consentYes').className + ' / ' + a.$('consentNo').className);
+      check('izin: gizlilik bağlantısı', /privacy\.html/.test(a.$('consent').querySelector('a')?.href ?? ''));
+      a.$('consentNo').click(); await sl(100);
+      check('izin: Hayır → kutu kapanır, betik yok, tercih saklı', a.$('consent').hidden && !beacon() && a.win.localStorage.getItem('stats') === '0');
+      a.close();
+      const b = await open({ lang: 'en', consent: true, clear: false });
+      check('izin: yeniden açılışta sorulmaz', b.$('consent').hidden && !b.d.querySelector('script[data-cf-beacon]'));
+      b.$('statsbtn').click(); await sl(100);
+      check('izin: Daha fazla › istatistik açılınca betik yüklenir', !!b.d.querySelector('script[data-cf-beacon]') && b.win.localStorage.getItem('stats') === '1' && /on/.test(b.$('statsbtn').textContent));
+      b.win.localStorage.setItem('stats', '0'); noErr('izin', b); b.close();
     },
     // 14. Masaüstü düzeni
     async desktop() {

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SunPeek — Privacy</title>
+<meta name="description" content="What SunPeek stores, where your data goes and for how long.">
+<link rel="stylesheet" href="legal.css">
+</head>
+<body>
+<main>
+<p><a href="./">← SunPeek</a></p>
+<h1>Privacy</h1>
+<p class="muted">Last updated: 26 October 2026</p>
+
+<p>SunPeek estimates how much direct sun a building wall gets. It has no accounts, no ads and no tracking cookies, and it does not sell or share data for marketing. This page lists everything that leaves your device, who receives it and for how long it is kept.</p>
+
+<h2>Who is responsible</h2>
+<p>SunPeek is a free, non-commercial project run by its developer in Sweden. Contact, questions and requests (access, deletion, objection): <a href="https://github.com/tbelbek/sunpeek/issues">github.com/tbelbek/sunpeek/issues</a>. If you would rather not write in public, open an issue asking for a private channel and do not include personal details.</p>
+
+<h2>On your device</h2>
+<ul>
+<li><b>Settings and history</b> (language, clock format, floor, saved walls with their addresses): stored in your browser (localStorage). They never leave your device and you can delete them by clearing the site's data.</li>
+<li><b>Map data cache</b> (buildings, terrain tiles, sunshine data): stored in your browser (IndexedDB) so places you have seen open faster; buildings are refreshed after 90 days, terrain after a year.</li>
+<li><b>Location and compass</b>: used only if you allow them, and only inside the page, to centre the map and turn it with your phone. Your exact position is not sent anywhere; to fetch map data the app sends the area around it (see below).</li>
+</ul>
+
+<h2>SunPeek's own server</h2>
+<p>A shared, anonymous cache, so that an area someone has already loaded opens instantly for everyone. It receives only what is needed to fetch map data: area cell numbers (about 500 m squares), map tile numbers, a ~10 km cell for sunshine data, the text you search for, and, for saved walls, the wall's position to look up its address.</p>
+<table>
+<tr><th>Kept on the server</th><th>For</th></tr>
+<tr><td>Buildings for an area</td><td>90 days</td></tr>
+<tr><td>Terrain tiles</td><td>1 year</td></tr>
+<tr><td>Sunshine data for a ~10 km cell</td><td>400 days</td></tr>
+<tr><td>Overture building tiles</td><td>60 days</td></tr>
+<tr><td>Search text and its results</td><td>30 days</td></tr>
+<tr><td>Address of a position (rounded to ~1 m)</td><td>90 days</td></tr>
+</table>
+<p>None of these entries contains an IP address, a device identifier or an account, so they cannot be linked back to you. The server keeps no access log. To stop abuse it counts requests per IP address in memory for one minute; that counter is never written to disk.</p>
+
+<h2>Other services your browser talks to</h2>
+<p>Like any website, your browser sends your IP address and browser type to each service it fetches from. These services receive the area you are looking at, never your exact GPS position:</p>
+<ul>
+<li><b>Cloudflare</b> (USA/EU): carries all traffic to sunpeek.uk and protects it from attacks, and, only with your consent, counts visits (see below). See <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare's privacy policy</a>.</li>
+<li><b>Esri</b> (USA): satellite imagery tiles for the area on screen.</li>
+<li><b>unpkg</b>: the map library files, loaded once; no location data.</li>
+<li>Only when SunPeek's server cannot answer: <b>OpenStreetMap Overpass</b> (buildings), <b>Overture Maps / Amazon S3</b> (backup buildings), <b>AWS Terrain Tiles</b> (terrain), <b>Open-Meteo</b> (elevation, time zone, sunshine data) and <b>Photon by komoot</b> (search text and the position of a saved wall).</li>
+</ul>
+<p>The in-app data card (More › SunPeek cache › details) shows how many requests went to each service during your visit.</p>
+
+<h2 id="analytics">Visitor statistics</h2>
+<p>Only if you choose <b>Allow</b> when SunPeek asks, it loads <b>Cloudflare Web Analytics</b>, which records the page, country, browser type and the site you came from. It uses no cookies and does not identify or follow you across sites; Cloudflare keeps the raw data for a short time and then only totals. If you choose <b>No thanks</b>, the script is never loaded. You can change your choice at any time under <i>More › Visit statistics</i>.</p>
+
+<h2>Legal basis</h2>
+<p>Providing the service you ask for (fetching map data, searching, looking up addresses) and keeping it secure are based on legitimate interest (GDPR Art. 6(1)(f)). Location and compass access are based on your permission in the browser, and visit statistics on your consent (GDPR Art. 6(1)(a) and the Swedish Electronic Communications Act, ch. 9 §28); you can withdraw both at any time. Settings and history kept on your device are necessary for the service you use and need no consent.</p>
+
+<h2>Your rights</h2>
+<p>You can ask for access, correction or deletion and object to processing. Because the server stores no identifiers, we usually cannot find entries that belong to you; a search you made can be deleted if you tell us its exact text. Data on your device is under your control: clear the site's data in your browser. You can also complain to the Swedish data protection authority, <a href="https://www.imy.se/en/">IMY</a>.</p>
+
+<h2>Changes</h2>
+<p>If this changes, this page is updated and its date changes. The full history is in the <a href="https://github.com/tbelbek/sunpeek/commits/main/privacy.html">public repository</a>.</p>
+</main>
+</body>
+</html>

@@ -40,8 +40,8 @@ const TILE_URL = ESRI_KEY
   : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 const tiles = L.tileLayer(TILE_URL, {
   // Atıflar: Esri temel harita koşulu ("Powered by Esri" + görüntü kaynakları), OSM ODbL (katkıcılar + lisans bağlantısı),
-  // AWS Terrain Tiles kaynak listesi, Open-Meteo CC BY 4.0. Overture yalnız kullanıldığında eklenir (useOverture).
-  maxZoom: 20, maxNativeZoom: 19, attribution: '<a href="https://www.esri.com" target="_blank" rel="noopener">Powered by Esri</a> · imagery: Esri, Vantor, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community · buildings © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL) · terrain: <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">AWS Terrain Tiles</a> · sunshine: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0)'
+  // AWS Terrain Tiles kaynak listesi. Open-Meteo (CC BY 4.0) verinin gösterildiği enerji kartında. Overture yalnız kullanıldığında eklenir.
+  maxZoom: 20, maxNativeZoom: 19, attribution: '<a href="https://www.esri.com" target="_blank" rel="noopener">Powered by Esri</a> · imagery: Esri, Vantor, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community · buildings © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL) · terrain: <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">AWS Terrain Tiles</a>'
 });
 tiles.on('tileloadstart', () => net('tiles')).on('tileerror', () => svcFail('tiles', 'tile error')).addTo(map); // dinleyici önce: ilk karolar da sayılır
 const sLayer = L.layerGroup().addTo(map), bLayer = L.layerGroup().addTo(map), rLayer = L.layerGroup().addTo(map);
@@ -221,7 +221,8 @@ function showAnnual() {
     // ihtiyatlı aralık: üst = model, alt = %20 düşük (zayıf yıl, kir, yaşlanma, model hatası)
     const kwh = y.perKWp * HOME_KWP, lo = kwh * SOLAR_LOW, n = v => Math.round(v).toLocaleString(lang), r100 = v => n(Math.round(v / 100) * 100);
     h.annual[k] = { html: `<div class="muted">${esc(tr('annualTitle'))}${tip([tr('avgNote'), tr('annualRow', { y: n(y.perKWp), m: n(y.perM2) }), tr('annualNeed', { lo: n(HOME_KWH / y.perM2), hi: n(HOME_KWH / (y.perM2 * SOLAR_LOW)) }), tr('annualNote', { year: `${IRR_YEAR - IRR_YEARS + 1}–${IRR_YEAR}` })].join(' '))}</div>
-      <div class="big">≈ ${r100(lo)}–${r100(kwh)} kWh</div><div>${esc(tr('annualSys', { kwp: HOME_KWP, m2: n(HOME_KWP / PV.eff) }))}</div><div>${esc(tr('annualHome', { lo: n(100 * lo / HOME_KWH), hi: n(100 * kwh / HOME_KWH), home: n(HOME_KWH) }))}</div>` };
+      <div class="big">≈ ${r100(lo)}–${r100(kwh)} kWh</div><div>${esc(tr('annualSys', { kwp: HOME_KWP, m2: n(HOME_KWP / PV.eff) }))}</div><div>${esc(tr('annualHome', { lo: n(100 * lo / HOME_KWH), hi: n(100 * kwh / HOME_KWH), home: n(HOME_KWH) }))}</div>
+      <div class="muted"><a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a></div>` }; // CC BY 4.0: verinin gösterildiği yerde bağlantı
     render(h.annual[k].html);
   }).catch(e => { h.annual[k] = null; render(`<span class="muted">${esc(tr('annualFail', { e: e.message }))}</span>`); });
 }
@@ -874,7 +875,7 @@ function showIntro(help = false) {
   openCard(`<h2 id="cardtitle">${help ? tr('helpTitle') : tr('introTitle')}</h2><p>${tr('introLead')}</p>
     <p>${tr('step1')}<br>${tr('step2')}<br>${tr('step3')}</p>
     <h3>${tr('permTitle')}</h3><p class="perm">${icon('locate')}<span>${tr('permLoc')}</span></p><p class="perm">${icon('compass')}<span>${tr('permMotion')}</span></p>
-    <p class="muted">${tr('permData')}</p>
+    <p class="muted">${tr('permData')} <a href="privacy.html" target="_blank" rel="noopener">${tr('legalPrivacy')}</a> · <a href="terms.html" target="_blank" rel="noopener">${tr('legalTerms')}</a></p>
     ${help ? `<p class="muted">${tr('permDenied')}</p><h3>${tr('legendTitle')}</h3><p class="muted">${legend}</p><h3>${tr('aboutTitle')}</h3><p class="muted">${tr('note')}</p>` : ''}
     <div class="actions"><button class="btn" id="introSkip">${help ? tr('close') : tr('searchInstead')}</button>${compassOn && pt ? '' : `<button class="btn primary" id="introGo">${icon('locate')}${tr('useMyLoc')}</button>`}</div>`);
   // iOS: pusula izni bu dokunuşun içinde istenmeli (await'ten önce)
@@ -882,10 +883,24 @@ function showIntro(help = false) {
   $('introSkip').onclick = () => { lsSet('introSeen', 1); closeCard(); if (!help) { if (!pt) setPoint(51.4779, -0.0015); $('coord').focus(); } };
 }
 $('helpbtn').onclick = () => showIntro(true);
+// Ziyaret istatistiği (Cloudflare Web Analytics). Çerezsiz olsa da cihazdan bilgi okuyan betik AB'de (EDPB 2/2023, İsveç LEK 9:28)
+// açık izin ister: yalnız "İzin ver" sonrası yüklenir. Cloudflare panelindeki otomatik ekleme kapalı olmalı, yoksa izinsiz gelir.
+const CF_BEACON = { token: 'ddff7af00bce41cf96c8d0587d54cd47', spa: false };
+function loadStats() {
+  if (document.querySelector('script[data-cf-beacon]')) return;
+  const s = Object.assign(document.createElement('script'), { defer: true, src: 'https://static.cloudflareinsights.com/beacon.min.js' });
+  s.dataset.cfBeacon = JSON.stringify(CF_BEACON); document.head.appendChild(s);
+}
+const drawStats = () => { $('statsbtn').textContent = tr(lsGet('stats') === '1' ? 'statsOn' : 'statsOff'); };
+function setStats(on) { lsSet('stats', on ? '1' : '0'); $('consent').hidden = true; if (on) loadStats(); drawStats(); }
+$('consentYes').onclick = () => setStats(true); $('consentNo').onclick = () => setStats(false);
+$('statsbtn').onclick = () => { const on = lsGet('stats') !== '1'; setStats(on); if (!on) say(tr('statsOffReload'), 'info'); }; // yüklenmiş betik yeniden yüklemede kalkar
+if (lsGet('stats') === '1') loadStats(); else if (lsGet('stats') == null && !new URLSearchParams(location.search).has('smoke')) $('consent').hidden = false;
+drawStats();
 $('netbtn').onclick = () => {
   const errOf = { dsSunpeek: 'sunpeek', dsOverpass: 'overpass', dsOverture: 'overture', dsElev: 'elev', dsTerr: 'terr', dsTZ: 'tz', dsPhoton: 'photon', dsIrr: 'irr', dsTiles: 'tiles' };
   const row = (k, n) => { const e = NETERR[errOf[k]]; return `<tr><td>${esc(tr(k))}${e ? `<div class="bad">${esc(tr('svcErr', { e: e.msg, t: e.t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', ...H12() }) }))}</div>` : ''}</td><td>${n == null ? '' : esc(tr('reqs', { n }))}</td></tr>`; };
-  openCard(`<h2 id="cardtitle">${tr('netTitle')}</h2><p>${tr('netOwn')}</p>
+  openCard(`<h2 id="cardtitle">${tr('netTitle')}</h2><p>${tr('netOwn')}</p><p class="legal"><a href="privacy.html" target="_blank" rel="noopener">${tr('legalPrivacy')}</a> · <a href="terms.html" target="_blank" rel="noopener">${tr('legalTerms')}</a></p>
     <table class="net">${row('dsSunpeek', NET.sunpeek)}${row('dsOverpass', NET.overpass)}${NET.overture ? row('dsOverture', NET.overture) : ''}${row('dsTerr', NET.terr)}${NET.elev ? row('dsElev', NET.elev) : ''}${NET.tz ? row('dsTZ', NET.tz) : ''}${NET.photon ? row('dsPhoton', NET.photon) : ''}${row('dsIrr', NET.irr)}${row('dsTiles', NET.tiles)}${row('dsCdn')}${row('dsCf')}</table>
     <div class="actions"><button class="btn" id="netClose">${tr('close')}</button></div>`);
   $('netClose').onclick = closeCard;

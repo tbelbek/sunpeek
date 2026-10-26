@@ -87,6 +87,11 @@
   .chip .rng { margin-left: auto; color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; } .chip > .ic { color: var(--muted); width: 18px; height: 18px; }
   .tf { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 8px; } .tf li { display: flex; gap: 10px; align-items: baseline; }
   .tf .dot { position: relative; top: 1px; } .tf .t2 { background: var(--ok); } .tf .t1 { background: #f59e0b; } .tf .t0 { background: var(--bad); } .tf .tx { background: var(--muted); }
+  #consent { position: fixed; z-index: 3000; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(420px, calc(100vw - 32px)); padding: 14px 16px; border-radius: 16px; background: var(--card); color: var(--fg); box-shadow: var(--shadow); border: 1px solid var(--line); font-size: 14px; }
+  #consent p { margin: 0 0 10px; } #consent .actions { display: flex; gap: 8px; } #consent .btn { flex: 1; }
+  .linkbtn { border: 0; background: none; padding: 0; color: var(--blue); font: inherit; text-decoration: underline; cursor: pointer; }
+  .legal { margin: 10px 0 0; font-size: 13px; color: var(--muted); } .legal a { color: var(--blue); }
+  .legal a, .legal .linkbtn { display: inline-block; min-height: 36px; line-height: 36px; } /* parmakla dokunulabilir */
   .chip .dot { background: var(--muted); } .chip.c-hi .dot { background: var(--ok); } .chip.c-mid .dot { background: #f59e0b; } .chip.c-lo .dot { background: var(--bad); }
   .sumic { display: inline-flex; align-items: center; gap: 8px; } .sumic .ic { color: var(--accent); }
   .tile span { font-size: 13px; color: var(--muted); }
@@ -156,7 +161,8 @@
   #card .perm { display: flex; gap: 10px; align-items: flex-start; } #card .perm .ic { color: var(--blue); margin-top: 2px; }
   #card .actions { display: flex; gap: 8px; margin-top: 18px; } #card .actions .btn { flex: 1; }
   #card a { color: var(--link); }
-  .leaflet-control-attribution { background: var(--card) !important; color: var(--muted) !important; } .leaflet-control-attribution a { color: var(--blue) !important; }
+  .leaflet-control-attribution { background: var(--card) !important; color: var(--muted) !important; }
+  @media (max-width: 700px) { .leaflet-control-attribution { font-size: 9px; line-height: 1.25; } } /* uzun Esri kaynak satırı haritayı kapatmasın; görünür kalmalı */ .leaflet-control-attribution a { color: var(--blue) !important; }
   .leaflet-bar a { background: var(--card) !important; color: var(--fg) !important; border-color: var(--line) !important; }
   @media (max-width: 700px) {
     html, body { font-size: 15px; } #sum { font-size: 16px; }
@@ -165,7 +171,7 @@
     body.closed #panel { height: auto; } /* tam açık: harita şeridi kalmaz; arama ve harita düğmeleri gizlenir, mevsim çubuğu üstte kalır (52 px + 8 boşluk + 8 aralık) */
     body.expanded #panel { height: calc(100% - 68px - env(safe-area-inset-top)); } body.expanded #sform, body.expanded #sresults, body.expanded #conf, body.expanded #fabs, body.expanded #backbtn { display: none; }
     #sheet[open] > summary .chev { display: none; } /* açıkken tek düğme: büyüt/küçült */ body.closed #expandbtn { display: none; }
-    #fabs { bottom: calc(44% + 12px); } body.closed #fabs { bottom: 76px; }
+    #fabs { bottom: calc(44% + 44px); } body.closed #fabs { bottom: 76px; } /* atıf satırının (2–3 satır) üstünde: Esri atfı engellenmemeli */
     #backbtn { bottom: calc(44% + 12px); } body.closed #backbtn { bottom: 76px; }
     .leaflet-control-zoom { display: none; }
     #sky { width: 160px; height: 160px; }
@@ -234,6 +240,9 @@
 </div>
 <button id="backbtn" class="btn" hidden><svg class="ic" aria-hidden="true"><use href="#i-locate-fixed"/></svg><span data-t="backLoc"></span></button>
 <dialog id="modal" aria-labelledby="cardtitle"><div id="card"></div></dialog>
+<!-- ziyaret istatistiği için açık izin (AB/İsveç): iki seçenek eşit ağırlıkta; yanıt verilene kadar betik yüklenmez -->
+<div id="consent" role="region" aria-labelledby="consentTxt" hidden><p id="consentTxt"><span data-t="consentText"></span> <a href="privacy.html#analytics" target="_blank" rel="noopener" data-t="legalPrivacy"></a></p>
+  <div class="actions"><button id="consentNo" class="btn" type="button" data-t="consentNo"></button><button id="consentYes" class="btn" type="button" data-t="consentYes"></button></div></div>
 <div id="panel"><details id="sheet" open><summary><span class="handle"></span><span id="sumdot" class="dot"></span><span id="sum">SunPeek</span><button id="expandbtn" class="iconbtn" type="button" data-t-aria="expand"><svg class="ic" aria-hidden="true"><use href="#i-chevron-up"/></svg></button><svg class="ic chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
   <div id="empty" class="hint"><svg class="ic" aria-hidden="true"><use href="#i-house"/></svg><span data-t="emptyHint"></span></div>
   <div id="fac"></div>
@@ -263,6 +272,7 @@
     </table>
     <div id="bstat" class="muted" style="margin-top:8px"></div>
     <button id="netbtn" class="estrow netrow" type="button" aria-haspopup="dialog"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg><span id="nettxt"></span><u data-t="details"></u></button>
+    <p class="legal"><a href="privacy.html" target="_blank" rel="noopener" data-t="legalPrivacy"></a> · <a href="terms.html" target="_blank" rel="noopener" data-t="legalTerms"></a> · <button id="statsbtn" class="linkbtn" type="button"></button></p>
   </details>
 </details></div>
 <script type="module" src="./app.js"></script>
