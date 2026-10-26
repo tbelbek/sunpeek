@@ -19,17 +19,28 @@ async function sfetch(k, url, opt) {
   try { const r = await fetch(url, opt); if (!r.ok) svcFail(k, 'HTTP ' + r.status); return r; }
   catch (e) { svcFail(k, e.name === 'TimeoutError' ? 'timeout' : e.message); throw e; }
 }
-// Yükleme göstergesi: devam eden her veri isteği sayılır; 300 ms'den uzun sürerse zoom'un yanında döner
+// Yükleme göstergesi: kullanıcının beklediği her veri isteği sayılır; 300 ms'den uzun sürerse haritada görünür.
+// { bg: true } ile gönderilen arka plan istekleri (OSM'ye geçiş yoklaması, bayat hücre tazeleme, adres çözme) sayılmaz:
+// Overpass çökükken her yoklama sunucuda 8 sn bekleyip göstergeyi dakikalarca yakıp söndürüyordu.
 { const f = window.fetch.bind(window); let n = 0, t = null;
   const set = d => { n += d; clearTimeout(t); if (n > 0) t = setTimeout(() => document.body.classList.add('loading'), 300); else document.body.classList.remove('loading'); };
-  window.fetch = (...a) => { set(1); return f(...a).finally(() => set(-1)); }; }
+  window.fetch = (u, o) => o?.bg ? f(u, o) : (set(1), f(u, o).finally(() => set(-1)));
+  // busy(p): göstergeyi bir işin (ör. kaynak yarışı) sonucuna bağlar; içindeki istekler bg ile sessiz gidebilir
+  window.busy = p => (set(1), p.finally(() => set(-1))); }
 // Yedek kaynak çağrısı: sayılır, hatası servis kaydına düşer
 async function backup(k, fn) { net(k); try { return await fn(); } catch (e) { svcFail(k, e.name === 'TimeoutError' ? 'timeout' : e.message); throw e; } }
 function net(k) { NET[k]++; const el = document.getElementById('nettxt'); if (el) el.textContent = tr('netLine', { s: tr('reqs', { n: NET.sunpeek }), n: Object.values(NET).reduce((a, b) => a + b, 0) - NET.sunpeek }); }
-const tiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+// Esri World Imagery. Esri'nin koşulları herkese açık uygulamada ArcGIS Location Platform hesabı ve API anahtarı istiyor
+// (ayda 2 milyon temel harita karosu ücretsiz). Anahtar sunpeek.uk referrer'ına kısıtlı olmalı; istemcide görünmesi normaldir.
+// Boşsa eski anahtarsız uç nokta kullanılır (koşullara uymaz, yalnız geçiş için).
+const ESRI_KEY = '';
+const TILE_URL = ESRI_KEY
+  ? `https://static-map-tiles-api.arcgis.com/arcgis/rest/services/static-basemap-tiles-service/v1/arcgis/imagery/static/tile/{z}/{y}/{x}?token=${ESRI_KEY}`
+  : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const tiles = L.tileLayer(TILE_URL, {
   // Atıflar: Esri temel harita koşulu ("Powered by Esri" + görüntü kaynakları), OSM ODbL (katkıcılar + lisans bağlantısı),
   // AWS Terrain Tiles kaynak listesi, Open-Meteo CC BY 4.0. Overture yalnız kullanıldığında eklenir (useOverture).
-  maxZoom: 20, maxNativeZoom: 19, attribution: '<a href="https://www.esri.com" target="_blank" rel="noopener">Powered by Esri</a> · imagery: Esri, Maxar, Earthstar Geographics, GIS User Community · buildings © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL) · terrain: <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">AWS Terrain Tiles</a> · sunshine: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0)'
+  maxZoom: 20, maxNativeZoom: 19, attribution: '<a href="https://www.esri.com" target="_blank" rel="noopener">Powered by Esri</a> · imagery: Esri, Vantor, Earthstar Geographics, and the GIS User Community · buildings © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL) · terrain: <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">AWS Terrain Tiles</a> · sunshine: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0)'
 });
 tiles.on('tileloadstart', () => net('tiles')).on('tileerror', () => svcFail('tiles', 'tile error')).addTo(map); // dinleyici önce: ilk karolar da sayılır
 const sLayer = L.layerGroup().addTo(map), bLayer = L.layerGroup().addTo(map), rLayer = L.layerGroup().addTo(map);
@@ -310,7 +321,7 @@ async function lookupAddr(e, retried = false) {
   if (addrPending.has(e.key)) return; // aynı kayıt için tek istek
   addrPending.add(e.key);
   try {
-    const srv = await sfetch('sunpeek', `/api/reverse?lang=${lang}&lat=${e.lat.toFixed(5)}&lon=${e.lon.toFixed(5)}`, { signal: AbortSignal.timeout(12000) }).catch(() => null);
+    const srv = await sfetch('sunpeek', `/api/reverse?lang=${lang}&lat=${e.lat.toFixed(5)}&lon=${e.lon.toFixed(5)}`, { signal: AbortSignal.timeout(12000), bg: true }).catch(() => null);
     const a = (srv?.ok ? await srv.json() : await photonReverse(e.lat, e.lon)).address ?? {};
     const addr = [[a.road, a.house_number].filter(Boolean).join(' '), a.city ?? a.town ?? a.village ?? a.suburb].filter(Boolean).join(', ');
     if (addr) putHist(hist().map(x => x.key === e.key ? { ...x, addr: addr.slice(0, 200) } : x));
@@ -437,10 +448,10 @@ function cellsAround(lat, lng) {
     for (let j = Math.floor((lng - dLon) / CELL); j <= Math.floor((lng + dLon) / CELL); j++) out.push(`oc:${i}:${j}`);
   return out;
 }
-async function fetchCells(keys) { // eksik/bayat hücreleri kapsayan tek kutu; her öğe ilk noktasının hücresine yazılır
+async function fetchCells(keys, quiet = false) { // eksik/bayat hücreleri kapsayan tek kutu; her öğe ilk noktasının hücresine yazılır
   const ij = keys.map(k => k.split(':').slice(1).map(Number)), is = ij.map(x => x[0]), js = ij.map(x => x[1]);
   const box = [Math.min(...is) * CELL, Math.min(...js) * CELL, (Math.max(...is) + 1) * CELL, (Math.max(...js) + 1) * CELL];
-  const el = await fetchOverpass(box), by = new Map(keys.map(k => [k, []]));
+  const el = await fetchOverpass(box, quiet), by = new Map(keys.map(k => [k, []]));
   for (const e of el) { const g = e.geometry?.[0] ?? e.members?.find(m => m.geometry)?.geometry?.[0]; if (!g) continue;
     by.get(`oc:${Math.floor(g.lat / CELL)}:${Math.floor(g.lon / CELL)}`)?.push(e); }
   await Promise.all([...by].map(([k, v]) => cput(k, v)));
@@ -452,11 +463,11 @@ const within = (lat, lng, m = 600) => { const k = Math.cos(lat * Math.PI / 180),
 async function fetchEls(lat, lng) { const a = await fetchArea(lat, lng); return Object.assign(a.filter(within(lat, lng)), { backup: a.backup }); } // hesaba 600 m (en yakın köşe); yedek işareti korunur
 async function fetchArea(lat, lng) {
   const keys = cellsAround(lat, lng), { fresh, stale, missing } = await cmany(keys, BLD_TTL);
-  if (stale.size) viaServer([...stale.keys()]).catch(() => {}); // arka planda tazele
+  if (stale.size) viaServer([...stale.keys()], true).catch(() => {}); // arka planda tazele
   if (!missing.length) return [...fresh.values(), ...stale.values()].flat();
   // Overpass'a 10 sn önce başlama hakkı; yanıt yoksa ya da hata verirse Overture paralel başlar, önce gelen kullanılır.
   // Geç gelen Overpass yanıtı yine hücrelere yazılır: bir sonraki ziyarette ana kaynağın verisi önbellekten gelir.
-  const osm = viaServer(missing).then(got => [...fresh.values(), ...stale.values(), ...got.values()].flat());
+  const osm = viaServer(missing, false, true).then(got => [...fresh.values(), ...stale.values(), ...got.values()].flat());
   let ovt = null;
   // yedek veri işaretlenir (backup = beklenen OSM hücreleri): sonuç kaynağa göre değişebildiği için güvende gösterilir ve
   // sunucu OSM'yi getirince sayfa ona geçer (upgradeLater)
@@ -466,27 +477,29 @@ async function fetchArea(lat, lng) {
     const t = setTimeout(() => { osmDownUntil = Date.now() + 600000; startOvt().then(res, rej); }, Date.now() < osmDownUntil ? 0 : HEDGE);
     osm.then(() => { clearTimeout(t); osmDownUntil = 0; }, () => { clearTimeout(t); osmDownUntil = Date.now() + 600000; startOvt().then(res, rej); });
   });
-  try { return await Promise.any([osm, late]); } catch (e) { throw e.errors?.[0] ?? e; } // ikisi de yoksa Overpass'ın hatası
+  try { return await busy(Promise.any([osm, late])); } catch (e) { throw e.errors?.[0] ?? e; } // ikisi de yoksa Overpass'ın hatası
 }
 // Önce SunPeek'in paylaşılan önbelleği: başka bir kullanıcının indirdiği bölge anında gelir; eksikleri sunucu Overpass'tan çeker.
 // Sunucuya ulaşılamazsa doğrudan Overpass; sunucu bazı hücreleri getiremediyse (Overpass yok) hata → Overture yarışı devralır.
-async function viaServer(keys) {
+// bg: arka plan (gösterge yanmaz; sunucu yoksa doğrudan Overpass'a da gidilmez, kullanıcı beklemiyor).
+// quiet: gösterge yanmaz ama yedek yol açık (yarışta: göstergeyi yarışın kendisi tutar, kaybeden istek sessiz sürer).
+async function viaServer(keys, bg = false, quiet = bg) {
   let r;
-  try { r = await sfetch('sunpeek', `/api/cells?k=${keys.map(k => k.slice(3)).join(',')}`, { signal: AbortSignal.timeout(15000) }); } catch { r = null; }
-  if (!r?.ok) return fetchCells(keys);
+  try { r = await sfetch('sunpeek', `/api/cells?k=${keys.map(k => k.slice(3)).join(',')}`, { signal: AbortSignal.timeout(15000), bg: quiet }); } catch { r = null; }
+  if (!r?.ok) { if (bg) throw new Error('server'); return fetchCells(keys, quiet); }
   const { cells = {}, missing = [] } = await r.json(), by = new Map();
   for (const [ij, v] of Object.entries(cells)) if (Array.isArray(v)) { by.set('oc:' + ij, v); cput('oc:' + ij, v); }
   if (missing.length) throw new Error('buildings: server could not fetch ' + missing.length + ' cells');
   return by;
 }
 const useOverture = () => map.attributionControl.addAttribution('buildings: <a href="https://docs.overturemaps.org/attribution/" target="_blank" rel="noopener">© Overture Maps Foundation</a> (ODbL)');
-async function fetchOverpass([s, w, n, e]) { // kutu: güney, batı, kuzey, doğu (kış güneşi alçak: 30 m bina ~340 m'ye gölge düşürür)
+async function fetchOverpass([s, w, n, e], quiet = false) { // kutu: güney, batı, kuzey, doğu (kış güneşi alçak: 30 m bina ~340 m'ye gölge düşürür)
   const a = `${s.toFixed(4)},${w.toFixed(4)},${n.toFixed(4)},${e.toFixed(4)}`;
   const q = `[out:json][timeout:60];(way(${a})["building"];way(${a})["building:part"];relation(${a})["building"];);out tags geom;`;
   let err;
   for (const url of OVERPASS) { // ana sunucu yavaş (30+ sn) ya da 429/502/504 verebilir, sırayla aynalar
     try {
-      const r = await sfetch('overpass', url, { method: 'POST', body: new URLSearchParams({ data: q }), signal: AbortSignal.timeout(url === OVERPASS[0] ? 60000 : 30000) });
+      const r = await sfetch('overpass', url, { method: 'POST', body: new URLSearchParams({ data: q }), signal: AbortSignal.timeout(url === OVERPASS[0] ? 60000 : 30000), bg: quiet });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return (await r.json()).elements;
     } catch (e) { err = e; }
@@ -582,15 +595,15 @@ async function upgradeLater(keys, id) {
   for (const s of [20, 45, 90, 180]) {
     await new Promise(r => setTimeout(r, s * 1000));
     if (id !== req) return;
-    try { await viaServer(keys); } catch { continue; } // hâlâ eksik
+    try { await viaServer(keys, true); } catch { continue; } // hâlâ eksik
     if (id !== req) return;
-    const keep = house && { lat: house.lat, lon: house.lon, az: house.az };
+    const keep = house && { lat: house.lat, lon: house.lon, az: house.az }, before = B.buildings.length;
     await refreshBuildings(true);
     if (keep && last?.src === 'osm') {
       const [x, y] = frame(pt.lat, pt.lng).to(keep.lat, keep.lon), e = pickEdge(B.buildings.concat(B.own), x, y, 5);
       if (e && Math.abs(((e.az - keep.az + 540) % 360) - 180) < 30) setHouse(e); else house = null, drawBuildings(), draw();
     }
-    say(tr('dataUpgraded'), 'ok');
+    if (keep || B.buildings.length !== before) say(tr('dataUpgraded'), 'ok'); // binasız yerde değişen bir şey yok: mesaj gürültü olurdu
     return;
   }
 }
@@ -785,7 +798,7 @@ async function photon(q) {
       display_name: [[p.name, [p.street, p.housenumber].filter(Boolean).join(' ')].filter(Boolean).join(', '), p.city, p.country].filter(Boolean).join(', ') }; });
 }
 async function photonReverse(lat, lon) {
-  const r = await sfetch('photon', `https://photon.komoot.io/reverse?limit=1&lat=${lat.toFixed(5)}&lon=${lon.toFixed(5)}`, { signal: AbortSignal.timeout(10000) });
+  const r = await sfetch('photon', `https://photon.komoot.io/reverse?limit=1&lat=${lat.toFixed(5)}&lon=${lon.toFixed(5)}`, { signal: AbortSignal.timeout(10000), bg: true }); // adres arka planda
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const p = (await r.json()).features?.[0]?.properties ?? {};
   return { address: { road: p.street ?? (p.housenumber ? p.name : undefined), house_number: p.housenumber, city: p.city ?? p.town ?? p.village ?? p.district } };

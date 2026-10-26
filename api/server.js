@@ -98,6 +98,7 @@ export function createServer(sql, { log = console } = {}) {
     return keys;
   }
 
+  let osmDownUntil = 0;
   async function cells(keys) {
     const ij = keys.map(k => k.split(':').map(Number));
     const rows = await sql`select c.i, c.j, c.data, c.fetched_at > now() - make_interval(days => ${TTL_DAYS}) as fresh
@@ -108,8 +109,9 @@ export function createServer(sql, { log = console } = {}) {
     const out = Object.fromEntries([...found].map(([k, r]) => [k, r.data]));
     let still = [];
     if (missing.length) {
-      const job = fetchCells(missing); job.catch(e => log.warn?.(`fetch ${e.message}`));
-      const got = await Promise.race([job.catch(() => null), new Promise(r => setTimeout(r, WAIT, null))]);
+      // devre kesici: Overpass son 10 dakikada çöktüyse beklemeden "eksik" denir, istemci hemen yedeğe geçer (çekim arka planda sürer)
+      const job = fetchCells(missing); job.then(() => { osmDownUntil = 0; }, e => { osmDownUntil = Date.now() + 600000; log.warn?.(`fetch ${e.message}`); });
+      const got = await Promise.race([job.catch(() => null), new Promise(r => setTimeout(r, Date.now() < osmDownUntil ? 0 : WAIT, null))]);
       if (got) for (const [k, v] of got) out[k] = v;
       still = missing.filter(k => !(k in out)); // gelmeyenler: istemci kendi yedeğine geçer, sunucu çekmeye devam eder
     }

@@ -8,6 +8,7 @@ import postgres from 'postgres';
 let hits = 0, mode = 'ok';
 const fake = http.createServer((req, res) => {
   hits++;
+  if (mode === 'down') { res.writeHead(502); return res.end(); }
   res.writeHead(200, { 'Content-Type': 'application/json' });
   if (mode === 'remark') return res.end(JSON.stringify({ elements: [], remark: 'runtime error: timeout' }));
   if (mode === 'slow') return setTimeout(() => res.end(JSON.stringify({ elements: [] })), 1500);
@@ -74,7 +75,7 @@ assert.deepEqual(r.body.missing, ['11600:2400']); assert.equal((await sql`select
 // 5. yavaş Overpass: bekleme süresi dolunca eksik döner, çekim sürer ve sonraki istek önbellekten gelir
 mode = 'slow'; const before = hits; r = await get('/api/cells?k=11700:2400');
 assert.deepEqual(r.body.missing, ['11700:2400'], 'beklemeden döner');
-await new Promise(res => setTimeout(res, 1200)); mode = 'ok';
+await new Promise(res => setTimeout(res, 1800)); mode = 'ok'; // yavaş çekim (1,5 sn) arka planda bitsin (devre açıksa istek hiç beklemeden dönmüştü)
 r = await get('/api/cells?k=11700:2400'); assert.deepEqual(r.body.missing, []); assert.equal(hits, before + 1, 'aynı çekim tamamlanıp saklandı');
 
 // 6. doğrulama: kötü/büyük/dağınık istekler reddedilir, Overpass'a gidilmez
@@ -111,6 +112,14 @@ assert.equal((await get('/api/health')).body, 'ok');
   await sql`update kv set fetched_at = now() - interval '500 days' where key like 's:%'`; up2.close();
   r1 = await get('/api/search?q=%C3%84rlegatan%2040&lang=tr'); assert.equal(r1.status, 200); assert.equal(r1.body[0].display_name, 'Ärlegatan 40, Göteborg');
 }
+
+// 6b. devre kesici: Overpass çökünce sonraki eksik istekler WAIT kadar beklemez, hemen "eksik" döner
+mode = 'down';
+let t = Date.now(); r = await get('/api/cells?k=12001:3001'); assert.deepEqual(r.body.missing, ['12001:3001']);
+await new Promise(res => setTimeout(res, 300)); // çekim hatası işlensin
+t = Date.now(); r = await get('/api/cells?k=12002:3002'); assert.deepEqual(r.body.missing, ['12002:3002']);
+assert.ok(Date.now() - t < 400, `devre açıkken bekleme yok: ${Date.now() - t} ms`);
+mode = 'ok';
 
 // 7. temizlik: 90 günden eskiler silinir
 await sql`update cells set fetched_at = now() - interval '100 days' where i = 11538`;
