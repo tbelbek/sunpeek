@@ -122,7 +122,7 @@ async () => {
       const h = JSON.parse(a.win.localStorage.getItem('gecmis') || '[]');
       check('geçmiş: kayıt oluştu', h.length === 1, h.length);
       const mins = h[0] && Math.round(h[0].summerH * 60);
-      check('geçmiş: yaz saati kutucukla aynı', h[0] && tiles[1].includes(`${Math.floor(mins / 60)} h ${mins % 60} m`), `${tiles[1]} vs ${h[0]?.summerH}`);
+      check('geçmiş: yaz saati kutucukla aynı', h[0] && tiles[1].includes(mins < 60 ? `${mins} m` : `${Math.floor(mins / 60)} h ${mins % 60} m`), `${tiles[1]} vs ${h[0]?.summerH}`);
       await until(() => JSON.parse(a.win.localStorage.getItem('gecmis'))[0].addr, 15000);
       check('geçmiş: adres geldi (Nominatim)', JSON.parse(a.win.localStorage.getItem('gecmis'))[0].addr, 'adres yok');
       // serbest bırak, sonra duvarın 2 m dışına dokun
@@ -214,11 +214,20 @@ async () => {
       await a.go(51.4779, -0.0015);
       a.$('unpick')?.click(); a.win.localStorage.removeItem('gecmis'); await sl(100); // koordinat araması duvarı kendisi seçer; dokunmayı sıfırdan test et
       const b = a.nearestBuilding(); await a.tapLatLng(...a.toLatLng(b.cx, b.cy)); await until(() => a.sp.house, 5000);
-      a.$('kat').value = 30; a.$('kat').dispatchEvent(new a.win.Event('input')); await sl(300);
-      check('kat: 30. kat için ❗', a.$('katwarn').style.display !== 'none' && /implausible/.test(a.$('katmsg').textContent), a.$('katmsg').textContent);
-      a.$('katmsg').click(); await sl(300);
-      check('kat: dokununca en üst kata düzeldi', +a.$('kat').value < 30 && a.$('katwarn').style.display === 'none', a.$('kat').value);
+      await until(() => !a.$('clearK').hidden, 15000);
+      const c = a.sp.house.clear?.k;
+      check('kat: gölgenin bittiği ilk kat bulundu ve gösterildi', Number.isInteger(c) && /no shadow/.test(a.$('clearK').textContent), a.$('clearK').textContent);
+      a.$('kat').value = c + 10; a.$('kat').dispatchEvent(new a.win.Event('input')); await sl(300);
+      check('kat: daha yukarısı uyarısız, "aynı sonuç" der', /Same result/.test(a.$('clearK').textContent) && !a.$('katwarn'), a.$('clearK').textContent);
+      const top = a.sp.house.day.visH; a.$('kat').value = c; a.$('kat').dispatchEvent(new a.win.Event('input')); await sl(300);
+      check('kat: o kattan yukarısı gerçekten aynı güneş süresi (seçili gün)', Math.abs(a.sp.house.day.visH - top) <= 1 / 12 + 1e-9, `${a.sp.house.day.visH} vs ${top}`);
       a.$('gpskat').click(); await sl(200);
+      // gölgeler: düğme katmanı açar/kapatır; seçili duvarı gölgeleyen binalar kırmızı
+      a.$('time').value = 720; a.$('time').dispatchEvent(new a.win.Event('input')); // gün ortası: güneş ufkun üstünde
+      a.$('shadowbtn').click(); await sl(300);
+      const shp = () => Object.values(a.sp.map._layers).filter(l => l.options?.fillColor === '#1e1b4b').length;
+      check('gölgeler: düğmeyle açıldı, çokgenler çizildi', a.$('shadowbtn').getAttribute('aria-pressed') === 'true' && shp() > 0, shp());
+      a.$('shadowbtn').click(); await sl(300); check('gölgeler: kapandı', shp() === 0, shp());
       check('kat: GPS rakımı yoksa açıklama', /no altitude/.test(gtxt(a)), gtxt(a));
       noErr('kat', a); a.close();
     },

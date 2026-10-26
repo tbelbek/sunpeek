@@ -103,8 +103,7 @@
   #kat::-webkit-inner-spin-button, #kat::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   #time { width: 100%; margin: 4px 0 0; accent-color: var(--accent); }
   #now { display: flex; align-items: center; gap: 8px; min-height: 36px; }
-  .fix { display: flex; gap: 8px; align-items: flex-start; width: 100%; margin-top: 8px; padding: 10px 12px; border: 0; border-radius: 12px; background: var(--warn-bg); color: var(--warn-fg); font-weight: 600; text-align: left; cursor: pointer; }
-  #katwarn { color: var(--bad); }
+  #clearK { margin-top: 8px; }
   #gstat:empty, #pos:empty, #rel:empty { display: none; }
   #gstat { margin-top: 8px; font-size: 14px; } #gstat.say { flex-wrap: wrap; } #gstat .btn { height: 36px; margin-top: 6px; }
   #look { width: 100%; margin-top: 8px; } #look[hidden] { display: none; }
@@ -164,7 +163,7 @@
 <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /> <path d="M3 3v5h5" /> <path d="M12 7v5l4 2" /></symbol>
 <symbol id="i-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /> <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></symbol>
 <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /> <path d="M12 16v-4" /> <path d="M12 8h.01" /></symbol>
-<symbol id="i-leaf" viewBox="0 0 24 24"><path d="M11 20a10 10 0 0010-10 25.9 25.9 0 00-1.04-7.281 1 1 0 00-1.755-.325C15.833 5.5 13 5.5 9.8 6.1A7 7 0 0011 20" /> <path d="M2 21a5 5 0 012.911-4.544C7.613 15.212 8.351 15.24 11 13" /></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></symbol><symbol id="i-leaf" viewBox="0 0 24 24"><path d="M11 20a10 10 0 0010-10 25.9 25.9 0 00-1.04-7.281 1 1 0 00-1.755-.325C15.833 5.5 13 5.5 9.8 6.1A7 7 0 0011 20" /> <path d="M2 21a5 5 0 012.911-4.544C7.613 15.212 8.351 15.24 11 13" /></symbol>
 <symbol id="i-locate-fixed" viewBox="0 0 24 24"><line x1="2" x2="5" y1="12" y2="12" /> <line x1="19" x2="22" y1="12" y2="12" /> <line x1="12" x2="12" y1="2" y2="5" /> <line x1="12" x2="12" y1="19" y2="22" /> <circle cx="12" cy="12" r="7" /> <circle cx="12" cy="12" r="3" /></symbol>
 <symbol id="i-locate" viewBox="0 0 24 24"><line x1="2" x2="5" y1="12" y2="12" /> <line x1="19" x2="22" y1="12" y2="12" /> <line x1="12" x2="12" y1="2" y2="5" /> <line x1="12" x2="12" y1="19" y2="22" /> <circle cx="12" cy="12" r="7" /></symbol>
 <symbol id="i-map-pin" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" /> <circle cx="12" cy="10" r="3" /></symbol>
@@ -195,6 +194,7 @@
 </div>
 <div id="fabs">
   <button id="geo" class="fab" data-t-aria="myLoc"><svg class="ic" aria-hidden="true"><use href="#i-locate"/></svg></button>
+  <button id="shadowbtn" class="fab" data-t-aria="shadows" data-t-title="shadows" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg></button>
   <button id="arrow" class="fab" data-t-aria="arrowTitle"><b><svg class="ic" aria-hidden="true"><use href="#i-compass"/></svg></b><span id="arrowtxt"></span></button>
 </div>
 <button id="backbtn" class="btn" hidden><svg class="ic" aria-hidden="true"><use href="#i-locate-fixed"/></svg><span data-t="backLoc"></span></button>
@@ -203,10 +203,9 @@
   <div id="empty" class="hint"><svg class="ic" aria-hidden="true"><use href="#i-house"/></svg><span data-t="emptyHint"></span></div>
   <div id="house" style="display:none"></div>
   <div class="field"><label for="kat"><span data-t="floorLabel"></span> <span id="eyeM" class="muted"></span></label>
-    <span id="katwarn" style="display:none"><svg class="ic" aria-hidden="true"><use href="#i-triangle-alert"/></svg></span>
     <div class="stepper"><button id="katminus" class="iconbtn" type="button" aria-label="−"><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg></button><input id="kat" type="number" value="0" min="0" step="1" inputmode="numeric"><button id="katplus" class="iconbtn" type="button" aria-label="+"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button></div>
     <button id="gpskat" class="iconbtn" type="button" data-t-aria="gpsFloorTitle"><svg class="ic" aria-hidden="true"><use href="#i-satellite-dish"/></svg></button></div>
-  <button id="katmsg" class="fix" type="button" style="display:none"></button>
+  <div id="clearK" hidden></div>
   <div class="field"><label for="date" data-t="date"></label><input id="date" type="date"></div>
   <div class="field" style="flex-wrap:wrap;border-bottom:0;padding-top:6px"><label for="time" data-t="time"></label><span id="tval" class="st"></span><input id="time" type="range" min="0" max="1439" step="5"></div>
   <div id="now"></div>

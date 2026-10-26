@@ -1,6 +1,6 @@
 // SunPeek uygulama mantığı (index.html'den ayrıldı: CSP satır içi betiğe izin vermesin diye)
 import { t as tr, lang, LANGS, dirs, dirsLong, applyStatic } from './i18n.js';
-import { zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip, annualPOA, pvYield, PV } from './sun.js';
+import { STOREY, zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip, annualPOA, pvYield, PV, shadowRing } from './sun.js';
 
 const $ = id => document.getElementById(id);
 const icon = (n, c = 'ic') => `<svg class="${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
@@ -22,7 +22,8 @@ const tiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/
   maxZoom: 20, maxNativeZoom: 19, attribution: 'Esri World Imagery · buildings © OpenStreetMap'
 });
 tiles.on('tileloadstart', () => net('tiles')).on('tileerror', () => svcFail('tiles', 'tile error')).addTo(map); // dinleyici önce: ilk karolar da sayılır
-const bLayer = L.layerGroup().addTo(map), rLayer = L.layerGroup().addTo(map);
+const sLayer = L.layerGroup().addTo(map), bLayer = L.layerGroup().addTo(map), rLayer = L.layerGroup().addTo(map);
+let shadowsOn = false; // gölgeler katmanı (seçili saatte binaların yer gölgesi), düğmeyle açılır
 const marker = L.marker([51.4779, -0.0015], { draggable: true }).addTo(map);
 const cone = L.polygon([], { color: '#4af', weight: 1, fillOpacity: 0.25, interactive: false }).addTo(map);
 let acc = null, pt = null, accM = null, gAlt = null, gAltAcc = null, B = { buildings: [], own: [] }, req = 0;
@@ -32,7 +33,7 @@ let solar = false; // enerji bölümü onay kutusuyla açılır (tercih saklanı
 let tilt = 90; // yüzey: 90 = duvar, daha küçük = aynı yöne bakan çatı paneli
 let follow = false; // GPS takip modu (konum düğmesi); elle seçimde kapanır
 let raw = null, heading = null, headAcc = null, compassOn = false, watchId = null, house = null, lastRender = 0, wake = null, gpsPt = null;
-let katSrc = null, katFix = null; // katSrc 'gps': kat GPS'ten geldi; katFix: önerilen düzeltme
+let katSrc = null; // 'gps': kat GPS'ten geldi
 let cmpOff = +(localStorage.getItem('cmpOff') || 0); // pusula düzeltmesi (manyetik sapma + cihaz hatası), duvara göre kalibre edilir
 
 let TZ = null; // konumun saat dilimi (Open-Meteo); gelene kadar tarayıcınınki
@@ -58,7 +59,7 @@ const lsJSON = (k, ok = () => true) => { const v = lsGet(k); if (v == null) retu
 const ymd = () => $('date').value.split('-').map(Number);
 const timeAt = min => { const [y, m, d] = ymd(); return zoned(y, m, d, min, TZ); };
 const kat = () => Math.max(0, Math.round(parseFloat($('kat').value) || 0));
-const eye = () => 1.5 + kat() * 2.8; // göz/pencere zeminden ~1,5 m, kat yüksekliği ~2,8 m
+const eye = () => 1.5 + kat() * (house?.storey ?? STOREY); // göz/pencere kat döşemesinden ~1,5 m yukarıda
 const z0 = () => last?.ground ? last.ground(pt.lat, pt.lng) : null; // gözlemcinin zemin kotu (DEM)
 
 // Bir noktadan az yönünde, ekranda ~px piksel uzunluğunda (metreye çevrilmiş) uç nokta. Harita dönse de doğru kalır.
@@ -69,7 +70,7 @@ function dest(from, az, px) {
 function ray(from, az, px, style) { const end = dest(from, az, px); L.polyline([from, end], style).addTo(rLayer); return end; }
 function label(at, text) { L.marker(at, { icon: L.divIcon({ className: 'lbl', html: text, iconSize: null }), interactive: false }).addTo(rLayer); }
 // 1.08 sa -> "1 sa 5 dk" (dile göre)
-const dur = h => { const t = Math.round(h * 60); return tr('dayLenFmt', { h: Math.floor(t / 60), m: t % 60 }); };
+const dur = h => { const t = Math.round(h * 60); return t < 60 ? tr('minFmt', { m: t }) : tr('dayLenFmt', { h: Math.floor(t / 60), m: t % 60 }); };
 const cap = s => s.charAt(0).toLocaleUpperCase(lang) + s.slice(1);
 const floorName = k => k === 0 ? tr('groundFloor') : tr('floorN', { k });
 const COL = { vis: '#1ad940', block: '#f7332a', terrain: '#a0522d', behind: '#dddddd' };
@@ -106,18 +107,20 @@ function draw() {
   $('tval').textContent = hm(t);
   $('altaz').textContent = `${p.alt.toFixed(1)}° · ${p.az.toFixed(0)}° ${dirName(p.az)}`;
   if (p.alt > 0) ray(origin, p.az, 230, { color: '#ffe600', weight: 5 });
+  drawShadows(t, p);
   let st, cls;
   if (p.alt <= 0) { st = tr('belowHorizon'); cls = 'night'; }
   else if (house) {
-    const s = house.day.slots.find(s => Math.abs(s.t - t) <= 150000)?.state ?? 'behind'; // 5 dk'lık dilim
-    cls = s; st = tr({ vis: 'fVis', block: 'fBlock', terrain: 'fTerrain', behind: 'fBehind' }[s]);
+    const sl = house.day.slots.find(s => Math.abs(s.t - t) <= 150000), s = sl?.state ?? 'behind'; // 5 dk'lık dilim
+    const by = sl?.by && B.buildings.find(b => b.id === sl.by);
+    cls = s; st = tr({ vis: 'fVis', block: 'fBlock', terrain: 'fTerrain', behind: 'fBehind' }[s]) + (by ? tr('byBld', { h: Math.round(by.h), est: by.guessed ? tr('estimated') : '' }) : '');
   } else { cls = obsState(p.alt, p.az); st = tr({ vis: 'oVis', block: 'oBlock', terrain: 'oTerrain' }[cls]); }
   $('now').innerHTML = `<span class="dot ${cls}"></span><span>${st}</span>`;
   $('sumdot').className = 'dot ' + cls;
   // Cephe seçiliyse başlık günün cevabını verir; anlık durum saat kaydırıcısının altında (#now)
   $('sum').textContent = house ? (getConf()?.level !== 'ok' && getConf() ? '≈ ' : '') + tr('sumHours', { h: dur(house.day.visH), d: $('date').value === todayStr ? tr('todayLower') : dm(`${pad(m)}-${pad(d)}`) }) : st;
   $('eyeM').textContent = `≈ ${eye().toFixed(1)} m`;
-  checkKat();
+  clearFloor();
 
   const polar = { day: tr('polarDay'), night: tr('polarNight') }[ev.polar];
   $('riseset').textContent = ev.sunrise && ev.sunset ? `${hm(ev.sunrise)} / ${hm(ev.sunset)}` : polar ?? '—';
@@ -127,25 +130,26 @@ function draw() {
   drawHouse(); drawHeading(); drawConf();
 }
 
-// Kat, binanın kat sayısıyla uyuşuyor mu? Cephe seçiliyse o bina, değilse içinde durduğun bina (en yüksek parça).
-// Uymuyorsa kat alanının yanında ❗ ve dokununca uygulanan öneri.
-function checkKat() {
-  const own = B.own.reduce((a, b) => !a || b.h > a.h ? b : a, null), b = house ?? own, k = kat(), gps = katSrc === 'gps';
-  let msg = ''; katFix = null;
-  if (b) {
-    const mx = maxFloor(b);
-    if (k > mx) {
-      katFix = mx;
-      msg = tr('kTooHigh', { k, which: tr(house ? 'whichSel' : 'whichOwn'), n: mx + 1, est: b.levels == null ? tr('estFromHeight') : '', mx }) +
-        (gps ? tr(k - mx >= 8 ? 'gpsEllipsoid' : 'gpsOff') : '');
-    }
-  } else if (gps && k > 0) {
-    katFix = 0; msg = tr('notInside', { k });
-  }
-  $('katwarn').style.display = $('katmsg').style.display = msg ? '' : 'none';
-  $('katmsg').innerHTML = msg ? `${icon('triangle-alert')}<span>${esc(msg)}</span>` : '';
+// Bina gölgesinin bittiği ilk kat: yükseldikçe gölge artmaz, ikili arama yeter. Bugün + yaz + kış birlikte;
+// o kattan yukarısı aynı sonucu verir (girilen kat bina yüksekliğiyle denetlenmez). Duvar ve gün başına bir kez, arka planda.
+function clearFloor() {
+  const h = house, el = $('clearK'); if (!el) return;
+  if (!h || tilt < 90) { el.hidden = true; return; }
+  const key = `${$('date').value}|${TZ}`;
+  const show = c => { if (house !== h) return; el.hidden = c == null; if (c == null) return;
+    el.className = 'say ' + (kat() >= c ? 'ok' : 'info'); el.innerHTML = esc(tr(kat() > c ? 'clearAbove' : 'clearFrom', { k: floorName(c) })) + tip(tr('clearTip')); };
+  if (h.clear?.key === key) return show(h.clear.k);
+  h.clear = { key, k: null };
+  setTimeout(() => {
+    if (house !== h) return;
+    const [y, m, d] = $('date').value.split('-').map(Number), S = SEASON(h.lat);
+    const days = [[y, m, d], ...[S.summer, S.winter].map(md => [y, ...md.split('-').map(Number)])];
+    const blocks = k => days.some(([yy, mm, dd]) => facadeDay(h.env, h, 1.5 + k * (h.storey ?? STOREY), yy, mm, dd, 10, TZ).slots.some(s => s.state === 'block'));
+    let lo = 0, hi = 60;
+    if (!blocks(0)) hi = 0; else if (blocks(hi)) hi = null; else while (hi - lo > 1) { const mid = (lo + hi) >> 1; blocks(mid) ? lo = mid : hi = mid; }
+    h.clear = { key, k: hi }; show(hi);
+  }, 50);
 }
-
 // Gözlemcinin bulunduğu nokta için güneş durumu: tepe (ufuk) ya da bina kesiyor mu?
 function obsState(alt, az) {
   if (last?.hz && z0() != null && alt < horizonAlt(last.hz, az, z0() + eye())) return 'terrain';
@@ -372,6 +376,20 @@ function drawBuildings() {
   if (house) L.polyline(house.edge, { color: '#00e5ff', weight: 6 }).addTo(bLayer);
 }
 
+// Seçili saatte binaların gölgesi (açıksa) + seçili duvarı bugün gölgeleyen binalar (kırmızı; şu an gölgeleyen kalın)
+function drawShadows(t, p) {
+  sLayer.clearLayers();
+  if (!B.buildings.length) return;
+  const F = frame(pt.lat, pt.lng), ll = ring => ring.map(([x, y]) => F.from(x, y));
+  if (shadowsOn && p.alt > 0) for (const b of B.buildings.concat(B.own)) if (Math.hypot(b.cx, b.cy) < 250)
+    L.polygon(ll(shadowRing(b, p.alt, p.az)), { color: '#312e81', weight: 1, opacity: 0.6, fillColor: '#1e1b4b', fillOpacity: 0.45, interactive: false }).addTo(sLayer);
+  if (!house?.day) return;
+  const now = house.day.slots.find(s => Math.abs(s.t - t) <= 150000)?.by, ids = new Set(house.day.slots.map(s => s.by).filter(Boolean));
+  for (const b of B.buildings) if (ids.has(b.id))
+    L.polygon(b.geom.map(g => [g.lat, g.lon]), { color: '#ef4444', weight: b.id === now ? 4 : 2, dashArray: b.id === now ? null : '4 4', fill: b.id === now, fillOpacity: 0.25, interactive: false }).addTo(sLayer);
+}
+$('shadowbtn').onclick = () => { shadowsOn = !shadowsOn; $('shadowbtn').classList.toggle('on', shadowsOn); $('shadowbtn').setAttribute('aria-pressed', shadowsOn); draw(); };
+
 // ---------- binalar ----------
 // Tarayıcıda saklanır (yer dolarsa eski bina önbellekleri silinir); aynı bölgeye dönünce anında gelir.
 async function fetchEls(lat, lng) {
@@ -476,7 +494,7 @@ function statB() {
 function setHouse(e) {
   if (!e) { say(tr('noEdge'), 'warn'); return; }
   const F = frame(pt.lat, pt.lng), [lat, lon] = F.from(e.x, e.y), r = e.b.ring;
-  house = { lat, lon, az: e.az, id: e.b.id, h: e.b.h, levels: e.b.levels, guessed: e.b.guessed, env: last, cache: {}, edge: [F.from(...r[e.i]), F.from(...r[(e.i + 1) % r.length])] };
+  house = { lat, lon, az: e.az, id: e.b.id, h: e.b.h, levels: e.b.levels, storey: e.b.storey, guessed: e.b.guessed, env: last, cache: {}, edge: [F.from(...r[e.i]), F.from(...r[(e.i + 1) % r.length])] };
   say(tr('facadePicked'), 'ok');
   drawBuildings(); draw();
 }
@@ -601,7 +619,7 @@ $('expandbtn').onclick = e => { e.preventDefault(); e.stopPropagation(); documen
 $('gpskat').onclick = () => {
   if (gAlt == null) { say(tr('noGpsAlt'), 'warn'); return; }
   if (z0() == null) { say(tr('noGround'), 'warn'); return; }
-  const k = Math.max(0, Math.round((gAlt - z0() - 1.5) / 2.8));
+  const k = Math.max(0, Math.round((gAlt - z0() - 1.5) / STOREY));
   $('kat').value = k; katSrc = 'gps'; draw();
   say(tr('gpsFloor', { a: gAlt.toFixed(0), acc: gAltAcc ? ` (±${Math.round(gAltAcc)})` : '', z: z0().toFixed(0), k }), 'info');
 };
@@ -691,7 +709,6 @@ $('seasonsToggle').onclick = () => { const on = !$('seasons').classList.contains
 seasonsMin(!!lsGet('seasonsMin'));
 seasonMark();
 $('kat').oninput = () => { katSrc = null; draw(); };
-$('katwarn').onclick = $('katmsg').onclick = e => { e.preventDefault(); if (katFix == null) return; $('kat').value = katFix; katSrc = null; draw(); };
 setInterval(drawSky, 60000); // "şu an" göstergesi
 // ---------- tanıtım / yardım kartı, yükseklik güveni ----------
 const legend = [['#1ad940', 'lgVis'], ['#f7332a', 'lgBlock'], ['#a0522d', 'lgTerrain'], ['#ddd', 'lgBehind'], ['#ff9900', 'lgRiseSet'], ['#ffe600', 'lgSel'], ['#4af', 'lgHeading']]

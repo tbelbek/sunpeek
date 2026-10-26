@@ -1,6 +1,6 @@
 // node test.mjs — sun.js'i bağımsız bir NOAA (Python) uygulamasına ve sunrise-sunset.org değerlerine karşı doğrular.
 import assert from 'node:assert/strict';
-import { sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, height, maxFloor, zoned, hmIn, heightConfidence, incidence, clearSkyDNI, annualPOA, pvYield, iam, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, HZ_D, HZ_STEP } from './sun.js';
+import { sunpos, dayEvents, blocked, blocker, shadowRing, localize, frame, pickEdge, rayEdge, facadeDay, height, maxFloor, zoned, hmIn, heightConfidence, incidence, clearSkyDNI, annualPOA, pvYield, iam, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, HZ_D, HZ_STEP } from './sun.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} != ${b}`);
 const utcHM = t => new Date(Math.floor(t / 60000) * 60000).toISOString().slice(11, 16); // saniyeyi keser
@@ -32,6 +32,12 @@ assert.ok(own.length === 1 && buildings.length === 1, 'gözlemcinin kendi binas�
 assert.equal(blocked(buildings, 30, 180, 1.5), true);
 assert.equal(blocked(buildings, 30, 0, 1.5), false);
 assert.equal(blocked(buildings, 70, 180, 1.5), false); // 1.5+10*tan70≈29>20
+assert.equal(blocker(buildings, 30, 180, 1.5)?.h, 20, 'güneşi kesen bina döner'); assert.equal(blocker(buildings, 30, 0, 1.5), null);
+{ // gölge: 10 m bina, güneş güneyde 45° → gölge 10 m kuzeye uzanır, tabanı kapsar
+  const r = shadowRing({ h: 10, ring: [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]] }, 45, 180), ys = r.map(p => p[1]), xs = r.map(p => p[0]);
+  const n = (a, b) => Math.abs(a - b) < 1e-9;
+  assert.ok(n(Math.max(...ys), 20) && n(Math.min(...ys), 0) && n(Math.min(...xs), 0) && n(Math.max(...xs), 10), JSON.stringify(r));
+}
 
 // Mesafe sınırı yok: 300 m güneyde 60 m kule, 10°'de keser (1.5+300*tan10≈54<60); eski 180 m sınırı kaçırırdı
 assert.equal(blocked(localize([el(sq(0, -305, 5), { height: '60' })], 60, 18).buildings, 10, 180, 1.5), true);
@@ -119,8 +125,16 @@ console.log('saat dilimi ok');
   const tagged = Array.from({ length: 10 }, (_, i) => el(sq(100 + i * 20, 100, 5), { building: 'apartments', height: '24' }, 100 + i));
   const r = localize([...tagged, el(sq(0, -30, 5), { building: 'apartments' }, 1), el(sq(30, -30, 3), { building: 'garage' }, 2)], 60, 18);
   assert.equal(r.buildings.find(b => b.id === 1).h, 24); assert.equal(r.buildings.find(b => b.id === 2).h, 3);
-  const few = localize([...tagged.slice(0, 9), el(sq(0, -30, 5), { building: 'apartments' }, 1)], 60, 18);
-  assert.equal(few.buildings.find(b => b.id === 1).h, 12, 'az örnekte varsayılan kalır');
+  const few = localize([...tagged.slice(0, 2), el(sq(0, -30, 5), { building: 'apartments' }, 1)], 60, 18);
+  assert.equal(few.buildings.find(b => b.id === 1).h, 12, '3 örnekten azında varsayılan kalır');
+  // Türler karışmaz (Ärlegatan hatası): 10 küçük "yes" bina apartmanı alçaltmaz; az katlı apartman komşular varsayılanın altına çekemez
+  const sheds = Array.from({ length: 10 }, (_, i) => el(sq(100 + i * 20, 200, 3), { building: 'yes', height: '4' }, 200 + i));
+  const low = Array.from({ length: 5 }, (_, i) => el(sq(100 + i * 20, 300, 5), { building: 'apartments', height: '10' }, 300 + i));
+  const mix = localize([...sheds, ...low, el(sq(0, -30, 5), { building: 'apartments' }, 1), el(sq(0, 60, 3), { building: 'yes' }, 2)], 60, 18);
+  assert.equal(mix.buildings.find(b => b.id === 1).h, 12, 'apartman küçük binalarla alçalmaz'); assert.equal(mix.buildings.find(b => b.id === 2).h, 4, '"yes" kendi türünün ortancası');
+  // Kat yüksekliği: tek sabit; yükseklik + kat sayısı varsa binanın kendisi (sınırlı)
+  assert.equal(maxFloor({ h: 16, levels: null }), 4); assert.equal(maxFloor({ h: 12, levels: null }), 3); assert.equal(maxFloor({ h: 10, levels: null }), 2);
+  assert.equal(height({ building: 'apartments', height: '20', 'building:levels': '5' }).storey, 4); assert.equal(height({ height: '30', 'building:levels': '5' }).storey, 4.2);
 }
 console.log('ortanca ok');
 

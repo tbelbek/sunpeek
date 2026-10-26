@@ -48,18 +48,22 @@ export function dayEvents(lat, lon, y, m, d) {
 // OSM'yi herkes düzenleyebilir: sonlu ve makul olmayan değerler (Infinity, negatif, 1 km+) yok sayılır.
 const num = v => { if (v == null) return NaN; const s = String(v).trim().replace(',', '.').slice(0, 32), n = parseFloat(s), m = /'|ft|feet/.test(s) ? n * 0.3048 : n; return Number.isFinite(m) && m >= 0 && m <= 1000 ? m : NaN; };
 
+// Döşemeden döşemeye kat yüksekliği (Avrupa konutlarında tipik 2,8–3,2 m); her yerde aynı sabit
+export const STOREY = 3;
 // OSM etiketinden bina yüksekliği. guessed: etiket yoksa true (bina türüne göre varsayılan).
 export function height(t) {
   const h = num(t.height);
   const lv = num(t['building:levels']), levels = isNaN(lv) || lv > 300 ? null : lv;
-  if (!isNaN(h)) return { h, levels, guessed: false };
-  if (levels != null) { const rh = num(t['roof:height']), rl = num(t['roof:levels']); return { h: lv * 3 + (!isNaN(rh) ? rh : !isNaN(rl) ? rl * 2.5 : 1), levels, guessed: false }; }
+  // kat yüksekliği: hem yükseklik hem kat sayısı varsa binanın kendi değeri (eski binalarda tavan yüksek), yoksa STOREY
+  if (!isNaN(h)) return { h, levels, storey: levels ? Math.min(4.2, Math.max(2.6, h / levels)) : STOREY, guessed: false };
+  if (levels != null) { const rh = num(t['roof:height']), rl = num(t['roof:levels']); return { h: lv * STOREY + (!isNaN(rh) ? rh : !isNaN(rl) ? rl * 2.5 : 1), levels, storey: STOREY, guessed: false }; }
   const def = { garage: 3, garages: 3, shed: 3, carport: 3, roof: 3, hut: 3, house: 6, detached: 6, semidetached_house: 6, terrace: 6, apartments: 12, residential: 12 };
-  return { h: Object.hasOwn(def, t.building) ? def[t.building] : 9, levels: null, guessed: true }; // hasOwn: "constructor" gibi etiketler prototipe çözülmesin
+  return { h: Object.hasOwn(def, t.building) ? def[t.building] : 9, levels: null, storey: STOREY, guessed: true }; // hasOwn: "constructor" gibi etiketler prototipe çözülmesin
 }
 
 // Binada olabilecek en üst kat (0 = zemin): kat etiketi varsa ondan, yoksa yükseklikten (~2,8 m/kat).
-export const maxFloor = b => b.levels != null ? Math.max(0, Math.round(b.levels) - 1) : Math.max(0, Math.floor(b.h / 2.8) - 1);
+// En üst kat (0 = zemin). Kat sayısı yoksa yükseklikten: çatı payı ~1 m düşülür
+export const maxFloor = b => b.levels != null ? Math.max(0, Math.round(b.levels) - 1) : Math.max(0, Math.round((b.h - 1) / (b.storey ?? STOREY)) - 1);
 
 export function pip(x, y, r) {
   let c = false;
@@ -87,16 +91,28 @@ function entry(ring, sx, sy, tMin) {
 // b.dz: bina zemininin gözlemci zeminine göre kotu (tepelik arazi). Gözlemciyi içeren binalar önceden çıkarılmış olmalı.
 // skipId: hedef bina, ilk 1 m'deki kesişimleri yok sayılır (cephe noktası duvarın 0,4 m dışında).
 // ponytail: min_height (havada duran kısımlar) yok sayılıyor, bina zeminden yükselen katı blok kabul ediliyor.
-export function blocked(buildings, alt, az, eye, skipId = null) {
+export const blocked = (...a) => !!blocker(...a);
+// Güneşi kesen ilk bina (yoksa null): güneş açısı + binanın yüksekliği ve uzaklığı. Birden çok bina sırayla kesebilir; her an ayrı bakılır.
+export function blocker(buildings, alt, az, eye, skipId = null) {
   const sx = Math.sin(az * rad), sy = Math.cos(az * rad), k = Math.tan(alt * rad);
   for (const b of buildings) {
     const top = b.h + (b.dz || 0) - eye;
     if (top <= 0) continue;
     if (Math.max(b.x0 * sx + b.y0 * sy, b.x1 * sx + b.y0 * sy, b.x0 * sx + b.y1 * sy, b.x1 * sx + b.y1 * sy) <= 0) continue; // tamamen arkada
     const t = entry(b.ring, sx, sy, b.id === skipId ? 1 : 0);
-    if (t !== null && t * k < top) return true;
+    if (t !== null && t * k < top) return b;
   }
-  return false;
+  return null;
+}
+
+// Binanın seçili andaki yer gölgesi (yerel metre): taban + güneşin tersine h/tan(yükseklik) kaydırılmış taban, dışbükey zarf.
+// ponytail: dışbükey zarf L/U biçimli binalarda iç köşeyi de gölge sayar; birleşik çokgen gerekirse kenar dörtgenlerinin birleşimi.
+export function shadowRing(b, alt, az) {
+  const L = b.h / Math.tan(Math.max(alt, 2) * rad), dx = -Math.sin(az * rad) * L, dy = -Math.cos(az * rad) * L;
+  const pts = b.ring.concat(b.ring.map(([x, y]) => [x + dx, y + dy])).sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+  const cross = (o, a, c) => (a[0] - o[0]) * (c[1] - o[1]) - (a[1] - o[1]) * (c[0] - o[0]), half = list => {
+    const h = []; for (const p of list) { while (h.length >= 2 && cross(h.at(-2), h.at(-1), p) <= 0) h.pop(); h.push(p); } h.pop(); return h; };
+  return half(pts).concat(half(pts.slice().reverse()));
 }
 
 // Yerel metre düzlemi. Boylam farkı ±180°'ye sarılır (antimeridyen); kutba çok yakın kx sıfıra inmesin diye sınırlanır.
@@ -120,7 +136,7 @@ function shapes(elements) {
 // Binaları (lat,lon) merkezli metre düzlemine çevirir. ground(lat,lon) -> zemin kotu verilirse her binaya dz eklenir.
 // building:part varsa, parça merkezini içeren dış çizgi atılır (yüksekliği parçalar taşır; çizginin tahmini 12 m'si ezmesin).
 // own: noktayı içeren binalar (hesaptan çıkarılır).
-const GENERIC = new Set(['yes', 'apartments', 'residential', 'commercial', 'office', 'retail', 'mixed_use']);
+const GENERIC = new Set(['yes', 'apartments', 'residential', 'commercial', 'office', 'retail', 'mixed_use']), RESI = new Set(['apartments', 'residential']);
 export function localize(elements, lat, lon, ground = null) {
   const F = frame(lat, lon), z0 = ground ? ground(lat, lon) : 0, all = [];
   for (const s of shapes(elements)) {
@@ -129,12 +145,13 @@ export function localize(elements, lat, lon, ground = null) {
     all.push({ id: s.id, ring, ...height(s.tags), type: s.tags.building ?? 'yes', part: !!s.tags['building:part'], geom: s.geometry, x0, x1, y0, y1, cx, cy,
                dz: ground ? ground(...F.from(cx, cy)) - z0 : 0 });
   }
-  // Etiketsiz genel binalar (yes/apartments/residential…) için sabit varsayılan yerine bölgenin ortanca yüksekliği:
-  // yükseklik etiketi ülkeden ülkeye çok değişiyor (Stockholm ~%93, Madrid ~%30, İstanbul ~%6). ≥10 ölçülü bina yoksa varsayılan kalır.
-  const known = all.filter(b => !b.guessed).map(b => b.h).sort((a, b) => a - b);
-  if (known.length >= 10) {
+  // Etiketsiz genel binalar için yakındaki AYNI TÜRDEN ölçülü binaların ortancası (≥3 örnek). Türler karıştırılmaz:
+  // kulübe ve garajlar apartmanları alçaltmasın. Apartman/konut, tür varsayılanının altına inmez (komşu az örnek yanıltabilir).
+  for (const type of GENERIC) {
+    const known = all.filter(b => !b.guessed && b.type === type).map(b => b.h).sort((a, b) => a - b);
+    if (known.length < 3) continue;
     const med = known[known.length >> 1];
-    for (const b of all) if (b.guessed && GENERIC.has(b.type)) b.h = med;
+    for (const b of all) if (b.guessed && b.type === type) b.h = RESI.has(type) ? Math.max(b.h, med) : med;
   }
   const parts = all.filter(b => b.part);
   const keep = all.filter(b => b.part || !parts.some(p => p.cx >= b.x0 && p.cx <= b.x1 && p.cy >= b.y0 && p.cy <= b.y1 && pip(p.cx, p.cy, b.ring)));
@@ -303,7 +320,8 @@ export function facadeDay(env, f, eye, y, m, d, step = 5, tz = null, tilt = 90) 
     const inc = incidence(p.alt, p.az, tilt, f.az);
     // duvar: güneş cephe düzleminin 85° içinde olmalı (eski ölçüt korunur); eğik panel: geliş açısı < 85°
     const front = tilt >= 90 ? Math.abs(((p.az - f.az + 540) % 360) - 180) < 85 : inc < 85;
-    slots.push({ t, alt: p.alt, az: p.az, inc, state: !front ? 'behind' : env.hz && p.alt < horizonAlt(env.hz, p.az, zEye) ? 'terrain' : blocked(all, p.alt, p.az, eye, f.id) ? 'block' : 'vis' });
+    const by = front && !(env.hz && p.alt < horizonAlt(env.hz, p.az, zEye)) ? blocker(all, p.alt, p.az, eye, f.id) : null;
+    slots.push({ t, alt: p.alt, az: p.az, inc, by: by?.id ?? null, state: !front ? 'behind' : env.hz && p.alt < horizonAlt(env.hz, p.az, zEye) ? 'terrain' : by ? 'block' : 'vis' });
   }
   const windows = [];
   for (const s of slots) {
