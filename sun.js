@@ -290,8 +290,10 @@ export const pvYield = poa => ({ perKWp: poa * PV.pr, perM2: poa * PV.eff * PV.p
 // güneş ufkun altındaysa dilim yok. Gün (y, m, d), tz saat diliminde (null = tarayıcı).
 // tilt: 90 = duvar (varsayılan); daha küçükse aynı yöne bakan çatı paneli (eye o zaman çatı yüksekliği olmalı).
 // Her dilime geliş açısı (inc) eklenir; vis dilimlerinden açık gök doğrudan enerji kWh/m² (energy) toplanır.
+// env.gs (isteğe bağlı): yüksekliği tahmin edilen binaları bu katsayıyla ölçekle (belirsizlik aralığı için)
 export function facadeDay(env, f, eye, y, m, d, step = 5, tz = null, tilt = 90) {
   const { buildings, own } = localize(env.el, f.lat, f.lon, env.ground), all = buildings.concat(own);
+  if (env.gs) for (const b of all) if (b.guessed) b.h *= env.gs;
   const zEye = (env.ground ? env.ground(f.lat, f.lon) : 0) + eye, slots = [];
   // Gerçek anlar üzerinden yerel gece yarısından ertesi gece yarısına: yaz saati günlerinde 23/25 saat doğru sayılır
   const n = new Date(Date.UTC(y, m - 1, d + 1)), t0 = +zoned(y, m, d, 0, tz), t1 = +zoned(n.getUTCFullYear(), n.getUTCMonth() + 1, n.getUTCDate(), 0, tz);

@@ -746,11 +746,23 @@ function drawConf() {
   $('conf').setAttribute('aria-label', tr('confTitle'));
 }
 $('conf').onclick = () => openConf();
+// Belirsizlik: tahmini yükseklikler %40 alçak / %60 yüksek olsaydı seçili cephenin güneş süresi ne olurdu
+const GUESS_LO = 0.6, GUESS_HI = 1.6;
+function confRange() {
+  const [y, m, d] = $('date').value.split('-').map(Number), S = SEASON(house.lat);
+  const days = [[tr('today'), y, m, d], ...[['summer', S.summer], ['winter', S.winter]].map(([k, md]) => [tr(k), y, ...md.split('-').map(Number)])];
+  return days.map(([lbl, yy, mm, dd]) => {
+    const h = gs => facadeCached(`r${gs}|${yy}-${mm}-${dd}`, () => facadeDay({ ...house.env, gs }, house, surfEye(), yy, mm, dd, 5, TZ, tilt)).visH;
+    const lo = h(GUESS_HI), hi = h(GUESS_LO);
+    return `<tr><td>${esc(lbl)}</td><td>${Math.abs(hi - lo) < 1 / 12 ? esc(dur(lo)) : `${esc(dur(lo))} – ${esc(dur(hi))}`}</td></tr>`;
+  }).join('');
+}
 function openConf() {
   conf = getConf();
   if (!conf) return;
   const o = house ? { lat: house.lat, lng: house.lon } : pt;
   openCard(`<h2 id="cardtitle">${tr('confTitle')}</h2><p>${tr('confBody', { g: conf.guessed, n: conf.n })}</p>
+    ${house ? `<h3>${tr('confRangeTitle')}</h3><table class="net">${confRange()}</table><p class="muted">${tr('confRangeNote')}</p>` : ''}
     ${conf.targetGuessed ? `<p>${tr('confTarget')}</p>` : ''}<p>${tr('confFix')}</p>
     <p><a href="https://www.openstreetmap.org/edit#map=19/${o.lat.toFixed(5)}/${o.lng.toFixed(5)}" target="_blank" rel="noopener">${tr('confEdit')} ↗</a></p>
     <div class="actions"><button class="btn" id="confClose">${tr('close')}</button></div>`);

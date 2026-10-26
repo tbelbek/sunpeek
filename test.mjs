@@ -89,6 +89,11 @@ console.log('ok');
   assert.ok(open.slots.some(s => s.state === 'behind'), 'sabah/akşam güneş arkada');
   const shaded = facadeDay({ el: [target, wall] }, f, 1.5, 2026, 6, 21);
   assert.equal(noon(shaded).state, 'block'); assert.ok(shaded.visH < open.visH);
+  // Belirsizlik: yüksekliği tahmin edilen bina env.gs ile ölçeklenir; etiketli bina etkilenmez
+  const gw = el([[-20, -30], [20, -30], [20, -10], [-20, -10], [-20, -30]], { building: 'yes' }, 3);
+  const g = gs => facadeDay({ el: [target, gw], gs }, f, 1.5, 2026, 6, 21).visH;
+  assert.ok(g(0.3) >= g(1) && g(1) >= g(3) && g(3) < g(0.3), `tahmini yükseklik aralığı ${g(0.3)} ${g(1)} ${g(3)}`);
+  assert.equal(facadeDay({ el: [target, wall], gs: 3 }, f, 1.5, 2026, 6, 21).visH, shaded.visH, 'etiketli bina ölçeklenmez');
   // Aralık öğlesi ~6,6°: güneydeki ~9°'lik tepe keser
   const dec = facadeDay({ el: [target], hz: hill }, f, 1.5, 2026, 12, 21);
   assert.equal(noon(dec).state, 'terrain');

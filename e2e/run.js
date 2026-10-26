@@ -122,7 +122,7 @@ async () => {
       const h = JSON.parse(a.win.localStorage.getItem('gecmis') || '[]');
       check('geçmiş: kayıt oluştu', h.length === 1, h.length);
       const mins = h[0] && Math.round(h[0].summerH * 60);
-      check('geçmiş: yaz saati kutucukla aynı', h[0] && tiles[1].includes(`${Math.floor(mins / 60)} h ${mins % 60} min`), `${tiles[1]} vs ${h[0]?.summerH}`);
+      check('geçmiş: yaz saati kutucukla aynı', h[0] && tiles[1].includes(`${Math.floor(mins / 60)} h ${mins % 60} m`), `${tiles[1]} vs ${h[0]?.summerH}`);
       await until(() => JSON.parse(a.win.localStorage.getItem('gecmis'))[0].addr, 15000);
       check('geçmiş: adres geldi (Nominatim)', JSON.parse(a.win.localStorage.getItem('gecmis'))[0].addr, 'adres yok');
       // serbest bırak, sonra duvarın 2 m dışına dokun
@@ -228,6 +228,9 @@ async () => {
       await a.go(40.9892, 29.0272);
       check('güven: ❗ çıktı', a.$('conf').style.display !== 'none', a.$('conf').style.display);
       check('güven: önce metinle açık', !a.$('conf').classList.contains('mini'));
+      { const b = a.nearestBuilding(); await a.tapLatLng(...a.toLatLng(b.cx, b.cy)); await until(() => a.sp.house, 5000);
+        a.$('conf').click(); await sl(300); const rows = [...a.d.querySelectorAll('#card table.net tr')].map(r => r.innerText);
+        check('güven: kartta seçili duvarın olası aralığı (3 gün)', rows.length === 3 && rows.every(r => /\d/.test(r)), rows.join(' | ')); a.d.getElementById('confClose').click(); }
       await sl(5300); const cr = a.$('conf').getBoundingClientRect();
       check('güven: 5 sn sonra ünleme katlandı, ekran içinde', a.$('conf').classList.contains('mini') && cr.width <= 44 && cr.left >= 0 && cr.right <= a.win.innerWidth, JSON.stringify(cr));
       a.$('conf').click(); await sl(200);
