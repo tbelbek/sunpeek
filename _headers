@@ -1,0 +1,9 @@
+# Cloudflare Workers statik dosyaları için başlıklar; nginx.conf'takilerle aynı tutulmalı
+/*
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://unpkg.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: https://server.arcgisonline.com https://ibasemaps-api.arcgis.com https://unpkg.com; connect-src 'self' https://overturemaps-extras-us-west-2.s3.amazonaws.com https://s3.amazonaws.com https://photon.komoot.io https://overpass-api.de https://maps.mail.ru https://overpass.private.coffee https://api.open-meteo.com https://archive-api.open-meteo.com https://nominatim.openstreetmap.org https://cloudflareinsights.com; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; upgrade-insecure-requests
+  X-Frame-Options: SAMEORIGIN
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(self), accelerometer=(self), gyroscope=(self), magnetometer=(self), screen-wake-lock=(self), camera=(), microphone=(), payment=(), usb=()
+  Cross-Origin-Opener-Policy: same-origin
+  Strict-Transport-Security: max-age=31536000

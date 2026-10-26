@@ -1,0 +1,15 @@
+# Statik sayfalar Cloudflare'den sunulur (ev makinesi kapalıyken de açılır). /api/* rotası Worker'sız: doğrudan tünele,
+# böylece CF-Connecting-IP ve nginx'teki IP başına sınırlar korunur. Paket: docker buildx build --target static -o dist .
+name = "sunpeek-static"
+compatibility_date = "2026-10-01"
+workers_dev = false
+preview_urls = false
+routes = [
+  { pattern = "sunpeek.uk/*", zone_name = "sunpeek.uk" },
+  { pattern = "www.sunpeek.uk/*", zone_name = "sunpeek.uk" },
+]
+
+[assets]
+directory = "dist"
+html_handling = "auto-trailing-slash"
+not_found_handling = "none"

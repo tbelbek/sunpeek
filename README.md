@@ -75,6 +75,8 @@ PG_PASSWORD=test docker compose -f docker-compose.yml -f docker-compose.e2e.yml 
 
 Production uses `docker-compose.yml` alone: `sunpeek` (nginx-unprivileged, static files, `/api/` proxied), `sunpeek-api` (Node 22, `api/server.js`), `sunpeek-db` (PostgreSQL 17 on an internal network, named volume) and `sunpeek-probe` (checks every data source every 10 minutes and logs failures). Database migrations are versioned SQL files in `api/migrations`, applied in order at start-up. All containers run read-only where possible, with `cap_drop: ALL` and `no-new-privileges`; nginx sends a strict CSP and security headers, rate-limits `/api/` per visitor and keeps no access log for it.
 
+The static pages are also served from Cloudflare Workers (`wrangler.toml`, static assets only, headers in `_headers`), so the page opens even when the server is down; build the bundle with `docker buildx build --target static -o dist .` and deploy it with `npx wrangler deploy`. Routes for `/api/*` have no Worker, so API calls go straight through the tunnel to nginx and keep the visitor's IP for rate limiting.
+
 ## Tests
 
 ```sh

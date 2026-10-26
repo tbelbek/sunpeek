@@ -4,3 +4,4 @@ screenshot-*.png
 .shots/
 .env
 node_modules/
+dist/

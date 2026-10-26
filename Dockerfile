@@ -13,6 +13,11 @@ RUN set -eu; \
     for f in sun.js i18n.js tiles.js tz.js cache.js; do v=$(sha1sum "$f" | cut -c1-10); sed -i "s#'./$f'#'./$f?v=$v'#" app.js; grep -q "$f?v=$v" app.js; done; \
     v=$(sha1sum app.js | cut -c1-10); sed -i "s#\"./app.js\"#\"./app.js?v=$v\"#" index.html; grep -q "app.js?v=$v" index.html
 
+# Cloudflare Workers'a yüklenen statik paket: docker buildx build --target static -o dist .
+FROM scratch AS static
+COPY --from=build /w/ /
+COPY _headers /
+
 # 2) çalışma: yetkisiz kullanıcıyla 8080'de nginx
 FROM nginxinc/nginx-unprivileged:1.29-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
