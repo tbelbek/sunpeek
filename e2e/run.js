@@ -397,11 +397,14 @@ async () => {
       const roof = parseFloat((a.d.querySelector('.energy').innerText.match(/summer ([\d.]+)/) || [])[1]);
       check('enerji: açılınca açı ve kWh/m² görünür, 35° panel > duvar (yaz)', /Sun angle on the surface|isn't on this surface/.test(a.d.querySelector('.energy').innerText) && roof > wall && wall > 0, `${wall} → ${roof}`);
       check('enerji: tercih saklandı', a.win.localStorage.getItem('solar') === '1');
+      await until(() => /EU household/.test(a.$('annual')?.innerText || ''), 30000);
+      const pct = +((a.$('annual')?.innerText || '').match(/≈ (\d+)% of an average EU household/) || [])[1];
+      check('yıllık: 5 kWp ortalama AB hanesinin %10–%200 arasını karşılar', pct > 10 && pct < 200, a.$('annual')?.innerText);
       a.$('solarchk').click(); await sl(200);
       check('enerji: kapatınca gizlenir', !a.d.querySelector('.energy'));
       check('veri: "SunPeek\'e giden: hiçbir şey" ve istek sayısı', /Sent to SunPeek: nothing · map data services: \d+ requests/.test(a.$('nettxt').textContent), a.$('nettxt').textContent);
       a.$('netbtn').click(); await sl(150);
-      check('veri: döküm kartı servisleri listeler', a.$('modal').open && a.d.querySelectorAll('#card table.net tr').length === 7);
+      check('veri: döküm kartı servisleri listeler', a.$('modal').open && a.d.querySelectorAll('#card table.net tr').length === 8);
       a.$('netClose').click();
       noErr('enerji/veri', a); a.close();
     },

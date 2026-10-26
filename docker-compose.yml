@@ -11,6 +11,18 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     networks: [proxy_network]
+  # Veri kaynaklarını 10 dakikada bir yoklar; sorunlar: docker logs sunpeek-probe | grep -v ' OK '
+  probe:
+    image: curlimages/curl:8.11.1
+    container_name: sunpeek-probe
+    restart: unless-stopped
+    entrypoint: ["sh", "/probe.sh"]
+    volumes: ["./probe.sh:/probe.sh:ro"]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging: { driver: json-file, options: { max-size: "1m", max-file: "5" } }
 networks:
   proxy_network:
     external: true

@@ -1,6 +1,6 @@
 // SunPeek uygulama mantığı (index.html'den ayrıldı: CSP satır içi betiğe izin vermesin diye)
 import { t as tr, lang, LANGS, dirs, dirsLong, applyStatic } from './i18n.js';
-import { zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip, annualPOA, pvYield } from './sun.js';
+import { zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip, annualPOA, pvYield, PV } from './sun.js';
 
 const $ = id => document.getElementById(id);
 const icon = (n, c = 'ic') => `<svg class="${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
@@ -9,11 +9,19 @@ const map = L.map('map', { rotate: true, touchRotate: false, rotateControl: fals
 L.control.zoom({ position: 'topright' }).addTo(map); // telefonda gizli (iki parmak); sol üst arama, sağ alt düğmeler
 // Veri şeffaflığı: bu oturumda hangi servise kaç istek gitti (SunPeek'in kendi sunucusuna hiçbiri gitmez)
 const NET = { overpass: 0, elev: 0, tz: 0, nom: 0, tiles: 0, irr: 0 };
+// Servis sağlığı: her istek buradan geçer; hata/yanıtsızlık servis başına saklanır, konsola yazılır, döküm kartında görünür
+const NETERR = {};
+function svcFail(k, msg) { NETERR[k] = { msg: String(msg).slice(0, 80), t: new Date() }; console.warn('[SunPeek] servis sorunu:', k, msg); }
+async function sfetch(k, url, opt) {
+  net(k);
+  try { const r = await fetch(url, opt); if (!r.ok) svcFail(k, 'HTTP ' + r.status); return r; }
+  catch (e) { svcFail(k, e.name === 'TimeoutError' ? 'timeout' : e.message); throw e; }
+}
 function net(k) { NET[k]++; const el = document.getElementById('nettxt'); if (el) el.textContent = tr('netLine', { n: Object.values(NET).reduce((a, b) => a + b, 0) }); }
 const tiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 20, maxNativeZoom: 19, attribution: 'Esri World Imagery · buildings © OpenStreetMap'
 });
-tiles.on('tileloadstart', () => net('tiles')).addTo(map); // dinleyici önce: ilk karolar da sayılır
+tiles.on('tileloadstart', () => net('tiles')).on('tileerror', () => svcFail('tiles', 'tile error')).addTo(map); // dinleyici önce: ilk karolar da sayılır
 const bLayer = L.layerGroup().addTo(map), rLayer = L.layerGroup().addTo(map);
 const marker = L.marker([51.4779, -0.0015], { draggable: true }).addTo(map);
 const cone = L.polygon([], { color: '#4af', weight: 1, fillOpacity: 0.25, interactive: false }).addTo(map);
@@ -148,12 +156,13 @@ function facadeCached(key, fn) { key += '|' + kat() + '|' + TZ + '|' + tilt; ret
 // Yıllık potansiyel: geçen yılın ölçülmüş saatlik ışınımı (Open-Meteo arşivi, ~10 km hücre, tarayıcıda saklanır)
 // + bizim gölge/geliş açısı hesabı. Cephe+eğim başına bir kez hesaplanır.
 const IRR_YEAR = new Date().getUTCFullYear() - 1, IRR_YEARS = 3; // tek yıl yanıltır (ör. 2025 rekor güneşliydi): son 3 yılın ortalaması
+// Ortalama AB hanesinin yıllık elektrik tüketimi (ODYSSEE-MURE, Kasım 2025: 3,6 MWh/konut) ve tipik bir ev sistemi
+const HOME_KWH = 3600, HOME_KWP = 5;
 async function fetchIrr(lat, lon) {
   const key = `irr:${IRR_YEAR - IRR_YEARS + 1}-${IRR_YEAR}:${lat.toFixed(1)},${lon.toFixed(1)}`;
   const hit = lsJSON(key, x => x && Array.isArray(x.dni) && x.dni.length > 8000 * IRR_YEARS);
   if (hit) return hit;
-  net('irr');
-  const r = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat.toFixed(2)}&longitude=${lon.toFixed(2)}&start_date=${IRR_YEAR - IRR_YEARS + 1}-01-01&end_date=${IRR_YEAR}-12-31&hourly=direct_normal_irradiance,diffuse_radiation&timezone=GMT&timeformat=unixtime`, { signal: AbortSignal.timeout(20000) });
+  const r = await sfetch('irr', `https://archive-api.open-meteo.com/v1/archive?latitude=${lat.toFixed(2)}&longitude=${lon.toFixed(2)}&start_date=${IRR_YEAR - IRR_YEARS + 1}-01-01&end_date=${IRR_YEAR}-12-31&hourly=direct_normal_irradiance,diffuse_radiation&timezone=GMT&timeformat=unixtime`, { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const h = (await r.json()).hourly;
   const d = { t0: h.time[0] * 1000, dni: h.direct_normal_irradiance.map(v => Math.round(v || 0)), dhi: h.diffuse_radiation.map(v => Math.round(v || 0)) };
@@ -173,7 +182,10 @@ function showAnnual() {
   fetchIrr(h.lat, h.lon).then(d => {
     const H = { t: d.dni.map((_, i) => d.t0 + i * 3600000), dni: d.dni, dhi: d.dhi };
     const eyeH = tilt < 90 ? h.h + 0.5 : eye(), poa = annualPOA(h.env, h, eyeH, tilt, H), y = pvYield(poa.total / IRR_YEARS);
-    h.annual[k] = { html: `<div class="st">${esc(tr('annualRow', { y: Math.round(y.perKWp), m: Math.round(y.perM2) }))}</div><div class="muted">${esc(tr('annualNote', { year: `${IRR_YEAR - IRR_YEARS + 1}–${IRR_YEAR}` }))}</div>` };
+    const kwh = y.perKWp * HOME_KWP, n = v => Math.round(v).toLocaleString(lang);
+    h.annual[k] = { html: `<div class="muted">${esc(tr('annualTitle'))}</div><div class="big">≈ ${n(Math.round(kwh / 100) * 100)} kWh</div>
+      <div>${esc(tr('annualSys', { kwp: HOME_KWP, m2: n(HOME_KWP / PV.eff) }))}</div><div>${esc(tr('annualHome', { p: n(100 * kwh / HOME_KWH), home: n(HOME_KWH) }))}</div>
+      <details class="fine"><summary>${esc(tr('calcDetails'))}</summary><p>${esc(tr('annualRow', { y: n(y.perKWp), m: n(y.perM2) }))} ${esc(tr('annualNeed', { need: n(Math.ceil(HOME_KWH / y.perM2)) }))}</p><p>${esc(tr('annualNote', { year: `${IRR_YEAR - IRR_YEARS + 1}–${IRR_YEAR}` }))}</p></details>` };
     render(h.annual[k].html);
   }).catch(e => { h.annual[k] = null; render(`<span class="muted">${esc(tr('annualFail', { e: e.message }))}</span>`); });
 }
@@ -204,7 +216,7 @@ function drawHouse() {
     <label class="chk"><input type="checkbox" id="solarchk"${solar ? ' checked' : ''}> ${esc(tr('solarToggle'))}</label>
     ${solar ? `<section class="solarcard" aria-labelledby="solarh"><h3 id="solarh">${icon('sun')}${esc(tr('solarTitle'))}</h3><div class="field"><label for="surf">${tr('surface')}</label><select id="surf">${[90, 60, 45, 35, 30, 15, 0].map(v => `<option value="${v}"${v === tilt ? ' selected' : ''}>${esc(v === 90 ? tr('surfWall') : v === 0 ? tr('surfFlat') : tr('surfRoof', { t: v }))}</option>`).join('')}</select></div>
     <div class="energy">${esc(incTxt)}<br>${esc(tr('energyRow', { d: dayLbl, e: house.day.energy.toFixed(1), s: sum.energy.toFixed(1), w: win.energy.toFixed(1) }))}</div>
-    <div class="muted">${esc(tr('energyNote') + (tilt < 90 ? ' ' + tr('roofNote', { h: (house.h + 0.5).toFixed(0) }) : ''))}</div>
+    <details class="fine"><summary>${esc(tr('calcDetails'))}</summary><p>${esc(tr('energyNote') + (tilt < 90 ? ' ' + tr('roofNote', { h: (house.h + 0.5).toFixed(0) }) : ''))}</p></details>
     <div id="annual" class="annual"></div></section>` : ''}
     ${compassOn ? `<button id="calib" class="btn" style="width:100%;margin-top:8px">${icon('ruler')}${tr('calib')}</button><div class="muted" style="margin-top:4px">${tr('calibHelp', { c: (cmpOff >= 0 ? '+' : '') + cmpOff.toFixed(0) })}</div>` : ''}`;
   $('unpick').onclick = () => { house = null; drawBuildings(); draw(); };
@@ -243,7 +255,7 @@ function saveHist({ day, sum, win, fmt }) {
 // Nominatim kullanım politikası: uygulama genelinde ≤1 istek/sn, toplu sorgu yok. Tüm çağrılar bu kuyruktan geçer.
 let nomChain = Promise.resolve();
 function nominatim(url) {
-  const run = nomChain.then(() => { net('nom'); return fetch(url, { signal: AbortSignal.timeout(10000) }); });
+  const run = nomChain.then(() => { return sfetch('nom', url, { signal: AbortSignal.timeout(10000) }); });
   nomChain = run.catch(() => {}).then(() => new Promise(r => setTimeout(r, 1100)));
   return run;
 }
@@ -351,8 +363,7 @@ async function fetchOverpass(lat, lng) {
   let err;
   for (const url of OVERPASS) { // ana sunucu yavaş (30+ sn) ya da 429/502/504 verebilir, sırayla aynalar
     try {
-      net('overpass');
-      const r = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: q }), signal: AbortSignal.timeout(url === OVERPASS[0] ? 60000 : 30000) });
+      const r = await sfetch('overpass', url, { method: 'POST', body: new URLSearchParams({ data: q }), signal: AbortSignal.timeout(url === OVERPASS[0] ? 60000 : 30000) });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return (await r.json()).elements;
     } catch (e) { err = e; }
@@ -368,8 +379,7 @@ async function fetchElev(pts, key) {
   for (let i = 0; i < pts.length; i += 100) {
     const c = pts.slice(i, i + 100), url = `https://api.open-meteo.com/v1/elevation?latitude=${c.map(p => p[0].toFixed(5))}&longitude=${c.map(p => p[1].toFixed(5))}`;
     for (let k = 0; ; k++) {
-      net('elev');
-      const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+      const r = await sfetch('elev', url, { signal: AbortSignal.timeout(20000) });
       if (r.ok) { out.push(...(await r.json()).elevation); break; }
       if (r.status !== 429 || k === 2) throw new Error('elevation HTTP ' + r.status);
       await new Promise(res => setTimeout(res, 3000 * (k + 1)));
@@ -469,8 +479,7 @@ async function fetchTZ(lat, lng, retried = false) {
   let tz = lsGet(key);
   if (tz && !validTZ(tz)) { try { localStorage.removeItem(key); } catch {} tz = null; }
   if (!tz) try {
-    net('tz');
-    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lng.toFixed(3)}&timezone=auto&forecast_days=1&daily=sunrise`, { signal: AbortSignal.timeout(10000) });
+    const r = await sfetch('tz', `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lng.toFixed(3)}&timezone=auto&forecast_days=1&daily=sunrise`, { signal: AbortSignal.timeout(10000) });
     tz = (await r.json()).timezone;
     if (validTZ(tz)) lsSet(key, tz); else tz = null; // doğrulanmadan saklanmaz
   } catch { tz = null; }
@@ -680,7 +689,8 @@ function showIntro(help = false) {
 }
 $('helpbtn').onclick = () => showIntro(true);
 $('netbtn').onclick = () => {
-  const row = (k, n) => `<tr><td>${esc(tr(k))}</td><td>${n == null ? '' : esc(tr('reqs', { n }))}</td></tr>`;
+  const errOf = { dsOverpass: 'overpass', dsElev: 'elev', dsTZ: 'tz', dsNom: 'nom', dsIrr: 'irr', dsTiles: 'tiles' };
+  const row = (k, n) => { const e = NETERR[errOf[k]]; return `<tr><td>${esc(tr(k))}${e ? `<div class="bad">${esc(tr('svcErr', { e: e.msg, t: e.t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' }) }))}</div>` : ''}</td><td>${n == null ? '' : esc(tr('reqs', { n }))}</td></tr>`; };
   openCard(`<h2 id="cardtitle">${tr('netTitle')}</h2><p>${tr('netOwn')}</p>
     <table class="net">${row('dsOverpass', NET.overpass)}${row('dsElev', NET.elev)}${row('dsTZ', NET.tz)}${row('dsNom', NET.nom)}${row('dsIrr', NET.irr)}${row('dsTiles', NET.tiles)}${row('dsCdn')}${row('dsCf')}</table>
     <div class="actions"><button class="btn" id="netClose">${tr('close')}</button></div>`);
