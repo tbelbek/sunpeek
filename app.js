@@ -689,10 +689,20 @@ function onOrient(e) {
   if (h == null) { if (!(e.absolute || e.type === 'deviceorientationabsolute') || e.alpha == null) return; h = 360 - e.alpha; }
   h = (h + (screen.orientation?.angle ?? 0) + 360) % 360;
   headAcc = e.webkitCompassAccuracy ?? null; cmpState = 'live';
-  // Alçak geçiren süzgeç (359→0 sarmasını doğru ele alır); ekranı ~5 Hz güncelle
-  raw = raw == null ? h : (raw + 0.25 * (((h - raw + 540) % 360) - 180) + 360) % 360;
+  // Zamana bağlı alçak geçiren süzgeç (~120 ms; 359→0 sarmasını doğru ele alır). Olay başına sabit katsayı, olay hızı düşük
+  // telefonlarda yönü hedefin çok gerisinde bırakıyordu.
+  const now = performance.now(), k = Math.max(0.25, 1 - Math.exp(-Math.min(500, now - (onOrient.t ?? now - 500)) / 120)); onOrient.t = now; // en az olay başına 0,25
+  raw = raw == null ? h : (raw + k * (((h - raw + 540) % 360) - 180) + 360) % 360;
   heading = (raw + cmpOff + 360) % 360;
-  if (performance.now() - lastRender > 200) { lastRender = performance.now(); drawHeading(); }
+  headFrame.id ||= requestAnimationFrame(headFrame);
+}
+// Harita her ekran karesinde döner (önce ~5 Hz'de kesik kesik dönüyordu); yazılar ve gökyüzü grafiği ~4 Hz.
+function headFrame() {
+  headFrame.id = 0;
+  if (!compassOn || heading == null) return;
+  if (performance.now() - lastRender > 250) { lastRender = performance.now(); return drawHeading(); }
+  map.setBearing(-heading);
+  if (pt) cone.setLatLngs([pt, dest(pt, heading - 15, 90), dest(pt, heading, 100), dest(pt, heading + 15, 90)]);
 }
 // iOS izni yalnızca bir dokunuşun içinde istenebilir; Android/diğerlerinde izin gerekmez.
 function requestCompass() {
