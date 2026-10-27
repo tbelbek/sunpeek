@@ -165,7 +165,8 @@ export function localize(elements, lat, lon, ground = null) {
     const hh = height(s.tags), type = s.tags.building ?? 'yes';
     // Küçük, türü belirsiz yapı (<30 m²: kulübe, garaj, trafo): etiketli 818 binada ortanca 4 m (p10 3, p90 12,9). Komşu ortancası
     // bunlara 13–15 m veriyor, haritada olmayan gölgeler çiziyordu. Konut/ticari türler hariç: dar sıra evler küçük ama yüksek.
-    if (hh.guessed && !TALL.has(type) && areaOf(ring) < 30) Object.assign(hh, { h: 4, src: 'small' });
+    // GBA da küçük yapıda bu kuraldan kötü (2026-10-27 doğrulama: MAE 2,4–5,9 m'ye karşı 1,4–1,8 m), o yüzden GBA'yı da ezer
+    if ((hh.guessed || hh.src === 'gba') && !TALL.has(type) && areaOf(ring) < 30) Object.assign(hh, { h: 4, src: 'small', guessed: true });
     all.push({ id: s.id, ring, ...hh, type, part: !!s.tags['building:part'], geom: s.geometry, x0, x1, y0, y1, cx, cy,
                dz: ground ? ground(...F.from(cx, cy)) - z0 : 0 });
   }

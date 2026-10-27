@@ -10,7 +10,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { localize, pickEdge, frame, facadeDay, facadeRange, heightBounds } from '../../sun.js';
 
 const [, , city = 'ams', arg2] = process.argv, API = process.env.API ?? 'https://sunpeek.uk', CELL = 0.005;
-const C = { ams: [52.3730, 4.8900], muc: [48.1370, 11.5750] }[city];
+// CENTER=lat,lon ile merkez değiştirilebilir (ör. Münih dış semtleri: daha az OSM etiketi)
+const C = process.env.CENTER ? process.env.CENTER.split(',').map(Number) : { ams: [52.3730, 4.8900], muc: [48.1370, 11.5750] }[city];
 if (!C) throw new Error('şehir: ams | muc');
 const [la0, lo0] = C, DLA = 0.006, DLO = 0.009;
 const F = frame(la0, lo0);
@@ -102,6 +103,15 @@ for (const [src, a] of Object.entries(by)) {
 }
 console.table(rows);
 
+// 1b) GBA'nın katkısı: GBA alan her bina, GBA olmasaydı kullanılacak değerle (komşu ortancası / tür varsayılanı / küçük yapı) karşılaştırılır
+const noGba = els.map(e => e.tags?.['gba:height'] == null ? e : { ...e, tags: Object.fromEntries(Object.entries(e.tags).filter(([k]) => k !== 'gba:height')) });
+const L1 = localize(noGba, la0, lo0, null), alt = new Map(L1.buildings.concat(L1.own).map(b => [b.id, b]));
+const cmp = {};
+for (const b of all) { const h = M.get(b.id), o = alt.get(b.id); if (h == null || b.part || b.src !== 'gba' || !o) continue;
+  const c = cmp[o.src] ??= { n: 0, gba: 0, without: 0, better: 0 }; c.n++; c.gba += Math.abs(b.h - h); c.without += Math.abs(o.h - h); if (Math.abs(b.h - h) < Math.abs(o.h - h)) c.better++; }
+console.log('GBA yerine geçtiği değer (GBA olmasaydı kaynak) → ortalama mutlak hata, m');
+console.table(Object.fromEntries(Object.entries(cmp).map(([k, c]) => [k, { n: c.n, 'GBA MAE m': (c.gba / c.n).toFixed(1), 'GBA\'sız MAE m': (c.without / c.n).toFixed(1), 'GBA daha iyi %': Math.round(100 * c.better / c.n) }])));
+
 // 2) sonuç: rastgele duvar, 2. kat, ekinoks ve kış; gerçek = referans yükseklikleriyle hesap
 const N = +(city === 'ams' ? arg2 : process.argv[4]) || 80;
 const truthEls = els.map(e => { const h = M.get(e.id); if (h == null) return e; const tags = { ...e.tags, height: h.toFixed(1) }; delete tags['building:levels']; return { ...e, tags }; });
@@ -115,8 +125,9 @@ for (let n = 0; res.length < N && n < N * 20; n++) {
   const env = { el: els, ground: null, hz: null }, tenv = { el: truthEls, ground: null, hz: null }, envs = { lo: { ...env, hs: 1 }, hi: { ...env, hs: -1 }, base: env }, eye = 7.5;
   for (const [m, d] of [[3, 20], [12, 21]]) {
     const mod = facadeDay(env, f, eye, 2025, m, d, 5).visH, tru = facadeDay(tenv, f, eye, 2025, m, d, 5).visH, rg = facadeRange(envs, f, eye, 2025, m, d);
-    res.push({ m, err: mod - tru, inR: tru >= rg.lo - 1 / 12 && tru <= rg.hi + 1 / 12, w: rg.hi - rg.lo });
+    const ng = facadeDay({ el: noGba, ground: null, hz: null }, f, eye, 2025, m, d, 5).visH;
+    res.push({ m, err: mod - tru, errNoGba: ng - tru, inR: tru >= rg.lo - 1 / 12 && tru <= rg.hi + 1 / 12, w: rg.hi - rg.lo });
   }
 }
-const sum = m => { const a = res.filter(r => r.m === m); return { duvar: a.length, 'MAE sa': (a.reduce((s, r) => s + Math.abs(r.err), 0) / a.length).toFixed(2), '>1 sa hata %': Math.round(100 * a.filter(r => Math.abs(r.err) > 1).length / a.length), 'aralık içinde %': Math.round(100 * a.filter(r => r.inR).length / a.length), 'aralık genişliği medyan sa': q(a.map(r => r.w), 0.5).toFixed(2) }; };
+const sum = m => { const a = res.filter(r => r.m === m); return { duvar: a.length, 'MAE sa': (a.reduce((s, r) => s + Math.abs(r.err), 0) / a.length).toFixed(2), '>1 sa hata %': Math.round(100 * a.filter(r => Math.abs(r.err) > 1).length / a.length), 'aralık içinde %': Math.round(100 * a.filter(r => r.inR).length / a.length), 'aralık genişliği medyan sa': q(a.map(r => r.w), 0.5).toFixed(2), 'GBA\'sız MAE sa': (a.reduce((s, r) => s + Math.abs(r.errNoGba), 0) / a.length).toFixed(2), 'GBA\'sız >1 sa %': Math.round(100 * a.filter(r => Math.abs(r.errNoGba) > 1).length / a.length) }; };
 console.table({ ekinoks: sum(3), kış: sum(12) });
