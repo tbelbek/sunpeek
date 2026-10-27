@@ -53,21 +53,20 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
   const noErr = (name, app) => check(`${name}: JS hatası yok`, !app.errors.length, app.errors.join(' | '));
 
   const S = {
-    // 1. İlk açılış: tanıtım kartı, izin açıklaması, Geç
+    // 1. İlk açılış: boş harita yerine hazır örnek sonuç (Göteborg); tanıtım kartı (i) düğmesinde
     async intro() {
       const a = await open({ lang: 'tr', intro: false });
-      check('intro: kart açık', a.$('modal').open);
-      const c = a.$('card').innerText;
-      check('intro: izin açıklamaları ve sunucuda saklama süresi var', /Konum/.test(c) && /Hareket ve yön/.test(c) && /30 gün/.test(c) && /IP/.test(c), c);
-      check('intro: iki düğme', a.$('introGo') && a.$('introSkip'));
-      a.$('introSkip').click(); await sl(300);
-      check('intro: Adres ara kartı kapatır ve aramaya odaklar', !a.$('modal').open && a.d.activeElement === a.$('coord'));
-      check('intro: introSeen kaydedildi', a.win.localStorage.getItem('introSeen') === '1');
+      check('ilk açılış: kart açılmaz', !a.$('modal').open);
+      check('ilk açılış: introSeen kaydedildi', a.win.localStorage.getItem('introSeen') === '1');
+      const h = await until(() => a.sp.house, 90000);
+      check('ilk açılış: örnek duvar seçildi (Första Långgatan, güney, 2. kat)', h && Math.abs(h.lat - 57.6997) < 3e-4 && Math.abs(((h.az - 180 + 540) % 360) - 180) < 30 && a.$('kat').value === '2', h && JSON.stringify({ lat: h.lat, az: h.az }));
+      check('ilk açılış: örnek notu ve kart başlığında "Örnek"', /Örnek/.test(a.$('gstat').textContent) && /^Örnek · /.test(a.$('fac').innerText), a.$('fac').innerText.slice(0, 60));
+      check('ilk açılış: sonuç kartı dolu', await until(() => /Kış|Yaz/.test(a.$('house').innerText), 15000), a.$('house').innerText.slice(0, 120));
       check('intro: pusula düğmesi etiketli', /Pusula/.test(a.$('arrow').getAttribute('aria-label') || ''), a.$('arrow').getAttribute('aria-label'));
-      await a.loaded();
-      check('intro: Geç sonrası varsayılan konum', a.sp.pt && Math.abs(a.sp.pt.lat - 51.4779) < 1e-3);
       a.$('helpbtn').click(); await sl(200);
-      check('yardım: ℹ️ kartı açar, renkler bölümü', a.$('modal').open && /Renkler/.test(a.$('card').innerText));
+      const c = a.$('card').innerText;
+      check('yardım: izin açıklamaları ve sunucuda saklama süresi var', /Konum/.test(c) && /Hareket ve yön/.test(c) && /30 gün/.test(c) && /IP/.test(c), c);
+      check('yardım: ℹ️ kartı açar, renkler bölümü', a.$('modal').open && /Renkler/.test(c));
       a.$('introSkip').click(); await sl(100);
       check('yardım: Kapat kapatır', !a.$('modal').open);
       noErr('intro', a); a.close();
@@ -464,10 +463,13 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
     },
     // İstatistik izni: ilk ziyarette sorulur, iki seçenek eşit, "Hayır"da betik yüklenmez, tercih kalır ve değiştirilebilir
     async consent() {
-      const i = await open({ lang: 'en', consent: true, intro: false }); // ilk ziyaret: tanıtım kartı açıkken izin kutusu gizli
-      const hiddenWithIntro = i.$('modal').open && i.$('consent').hidden;
+      const i = await open({ lang: 'en', consent: true, intro: false }); // ilk ziyaret (örnek sonuç): izin kutusu sonucu kapatmasın diye henüz sorulmaz
+      await until(() => i.sp.house, 60000);
+      const firstAsk = !i.$('modal').open && i.$('consent').hidden;
+      i.$('helpbtn').click(); await sl(150);
+      const hiddenWithCard = i.$('modal').open && i.$('consent').hidden;
       i.d.getElementById('introSkip').click(); await sl(150); // dialog 'close' olayı asenkron
-      check('izin: tanıtım kartı açıkken gizli, kapanınca sorulur', hiddenWithIntro && !i.$('consent').hidden, `${hiddenWithIntro} ${i.$('consent').hidden}`);
+      check('izin: örnek açılışta sorulmaz, kart açıkken gizli, kart kapanınca sorulur', firstAsk && hiddenWithCard && !i.$('consent').hidden, `${firstAsk} ${hiddenWithCard} ${i.$('consent').hidden}`);
       i.close();
       const a = await open({ lang: 'en', consent: true });
       const beacon = () => !!a.d.querySelector('script[data-cf-beacon]');
@@ -540,7 +542,7 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
       let copied = null; a.win.navigator.share = undefined; a.win.navigator.clipboard.writeText = async t => { copied = t; };
       a.$('sharebtn').click(); await sl(300);
       const url = copied?.match(/https?:\/\/\S+/)?.[0] ?? '';
-      check('paylaş: bağlantı konum, yön ve kat içerir', /\?at=-?\d+\.\d+,-?\d+\.\d+&az=\d+&f=3$/.test(url) && /SunPeek/.test(copied), copied);
+      check('paylaş: bağlantı konum, yön ve kat ve ref=share içerir', /\?at=-?\d+\.\d+,-?\d+\.\d+&az=\d+&f=3&ref=share$/.test(url) && /SunPeek/.test(copied), copied);
       check('paylaş: farklı bir duvar seçildi', Math.abs(((chosen.az - auto + 540) % 360) - 180) > 45, `${auto} → ${chosen.az}`);
       a.close();
       const b = await open({ lang: 'en', q: url.split('?')[1] + '&' });
@@ -578,7 +580,7 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
         const h = a.sp.house, k = place === 'front' ? 10 : -10, n = [Math.sin(h.az * Math.PI / 180) * k, Math.cos(h.az * Math.PI / 180) * k], [la, lo] = a.sp.frame(h.lat, h.lon).from(...n);
         return Promise.resolve(new a.win.Response(JSON.stringify([{ t: 'tree', lat: la, lon: lo, h: null }]), { status: 200, headers: { 'content-type': 'application/json' } })); };
       await a.go(57.6935, 11.9575); await until(() => a.sp.house, 8000); await until(() => a.d.querySelector('.treewarn'), 4000);
-      check('ağaç: önde 10 m ağaç → uyarı', !!a.d.querySelector('.treewarn'), a.$('fac').innerText.slice(0, 120));
+      check('ağaç: önde 10 m ağaç → uyarı', !!a.d.querySelector('.treewarn'), a.$('house').innerText.slice(0, 120));
       check('ağaç: haritada yeşil nokta', [...a.d.querySelectorAll('.leaflet-overlay-pane path')].some(p => p.getAttribute('stroke') === '#16a34a'));
       a.$('confchip').click(); await sl(300);
       check('ağaç: güven kartında satır, en çok orta', /tree/i.test(a.d.querySelector('#card .tf')?.innerText ?? '') && !/high/i.test(a.d.querySelector('#card p')?.innerText ?? ''), a.d.querySelector('#card .tf')?.innerText);

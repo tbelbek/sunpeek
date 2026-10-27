@@ -248,6 +248,7 @@ export function createServer(sql, { log = console } = {}) {
     try {
       const u = new URL(req.url, 'http://x');
       if (u.pathname === '/api/feedback') return req.method === 'POST' ? await feedback(req, send) : send(405, { error: 'method' });
+      if (u.pathname === '/api/event') return req.method === 'POST' ? await event(req, send) : send(405, { error: 'method' });
       if (req.method !== 'GET') return send(405, { error: 'method' });
       if (u.pathname === '/api/health') { await sql`select 1`; return send(200, 'ok', 'text/plain'); }
       if (u.pathname === '/api/cells') { const keys = parse(u.searchParams.get('k')); return keys ? send(200, await cells(keys)) : send(400, { error: 'bad cells' }); }
@@ -271,6 +272,20 @@ export function createServer(sql, { log = console } = {}) {
     await sql`insert into feedback (lat, lon, az, floor, answer, predicted, conf, src, sun_alt, sun_az)
       values (${r4(d.lat)}, ${r4(d.lon)}, ${Math.round(d.az)}, ${d.floor}, ${d.answer}, ${d.predicted}, ${d.conf ?? null}, ${d.src ?? null}, ${d.sunAlt ?? null}, ${d.sunAz ?? null})`;
     send(201, { ok: true });
+  }
+  // Kullanım sayacı: { e: olay, ref?: kaynak etiketi } → o günün toplamına +1. Kimlik, IP, konum yok.
+  // ponytail: günde en çok 200 farklı ref (uydurma etiketle tablo şişirilemesin); geçmeyen ref '?' olarak sayılır
+  const EVENTS = new Set(['visit', 'demo', 'result', 'share', 'solar']), refs = new Set(); let refsDay = '';
+  async function event(req, send) {
+    let body = '';
+    for await (const c of req) { body += c; if (body.length > 256) return send(413, { error: 'too large' }); }
+    let d; try { d = JSON.parse(body); } catch { return send(400, { error: 'bad json' }); }
+    if (!EVENTS.has(d?.e)) return send(400, { error: 'bad event' });
+    const day = new Date().toDateString(); if (day !== refsDay) { refsDay = day; refs.clear(); }
+    let ref = typeof d.ref === 'string' && /^[a-z0-9-]{1,32}$/.test(d.ref) ? d.ref : '';
+    if (ref && !refs.has(ref)) { if (refs.size >= 200) ref = '?'; else refs.add(ref); }
+    await sql`insert into stats (event, ref, n) values (${d.e}, ${ref}, 1) on conflict (day, event, ref) do update set n = stats.n + 1`;
+    send(204, '');
   }
   const purge = () => Promise.all([
     sql`delete from feedback where at < now() - interval '730 days'`,

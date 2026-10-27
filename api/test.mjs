@@ -41,11 +41,11 @@ process.env.MISS_WAIT_MS = '800';
 const { createServer } = await import('./server.js');
 
 const sql = postgres(process.env.DATABASE_URL ?? 'postgres://postgres:t@127.0.0.1:55432/postgres', { onnotice: () => {} });
-await sql`drop table if exists cells, kv, blobs, feedback, osm_cells, osm_cells_new, osm_stage, osm_cover, schema_migrations`;
+await sql`drop table if exists cells, kv, blobs, feedback, stats, osm_cells, osm_cells_new, osm_stage, osm_cover, schema_migrations`;
 const quiet = { info() {}, warn() {}, error: console.error };
 const { server, migrate, purge } = createServer(sql, { log: quiet });
 await migrate(); await migrate(); // göç iki kez: ikincisi bir şey yapmamalı
-assert.deepEqual((await sql`select version from schema_migrations`).map(r => r.version), ['001_cells.sql', '002_kv_blobs.sql', '003_feedback.sql', '004_osm_import.sql']);
+assert.deepEqual((await sql`select version from schema_migrations`).map(r => r.version), ['001_cells.sql', '002_kv_blobs.sql', '003_feedback.sql', '004_osm_import.sql', '005_stats.sql']);
 
 // 0. şehir içe aktarma (import.mjs): OPL → Overpass biçimi, ilk noktanın hücresi; alan içindeki boş hücre = [] (Overpass'a gidilmez)
 const { importDir, polys } = await import('./import.mjs');
@@ -165,6 +165,21 @@ mode = 'ok';
   assert.equal((await fetch(base + '/api/cells?k=1:1', { method: 'POST' })).status, 405, 'önbellek yolları POST kabul etmez');
   await sql`update feedback set at = now() - interval '800 days'`; await purge();
   assert.equal((await sql`select count(*)::int as n from feedback`)[0].n, 0, '2 yıldan eski cevap silinir');
+}
+
+// 6d. kullanım sayacı: yalnız izinli olaylar, günlük toplam, ref biçimi sıkı, IP yok
+{
+  const post = (b, raw) => fetch(base + '/api/event', { method: 'POST', body: raw ?? JSON.stringify(b) });
+  assert.equal((await post({ e: 'visit', ref: 'reddit-gbg' })).status, 204);
+  assert.equal((await post({ e: 'visit', ref: 'reddit-gbg' })).status, 204);
+  assert.equal((await post({ e: 'result' })).status, 204);
+  assert.equal((await post({ e: 'share', ref: 'Bad Ref!' })).status, 204, 'geçersiz ref boş sayılır');
+  const rows = await sql`select event, ref, n from stats order by event, ref`;
+  assert.deepEqual(rows.map(r => [r.event, r.ref, r.n]), [['result', '', 1], ['share', '', 1], ['visit', 'reddit-gbg', 2]]);
+  assert.ok(!Object.keys(rows[0]).some(k => /ip|addr|agent/i.test(k)));
+  for (const bad of [{ e: 'hack' }, {}, null]) assert.equal((await post(bad)).status, 400, JSON.stringify(bad));
+  assert.equal((await post(null, JSON.stringify({ e: 'visit', pad: 'x'.repeat(300) }))).status, 413);
+  assert.equal((await fetch(base + '/api/event')).status, 405);
 }
 
 // 7. temizlik: 90 günden eskiler silinir
