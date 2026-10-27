@@ -1,0 +1,58 @@
+# main'e her push'ta SunPeek'i yayınlar (tbelbek.com ile aynı düzen: kendi barındırılan Windows ajanı = sunucunun kendisi).
+# Depo herkese açık, ajan ev makinesinde: PR derlemesi KAPALI, yalnız main tetikler. Fork PR'ları ajanda kod çalıştıramaz.
+# Gizli değişken: CLOUDFLARE_API_TOKEN (pipeline'da secret). Veritabanı parolası ve ESRI anahtarı sunucudaki .env'de kalır, buraya gelmez.
+trigger:
+  branches: { include: [main] }
+pr: none
+
+pool:
+  name: Default
+
+variables:
+  D: 'D:\Docker\sunpeek'
+
+steps:
+  - checkout: self
+    clean: true
+    fetchDepth: 1
+
+  - script: node test.mjs
+    displayName: Unit tests
+
+  # deploy.sh'in scp listesiyle aynı dosyalar; /MIR yok, böylece .env ve sunucudaki diğer dosyalar silinmez
+  - powershell: |
+      docker stop sunpeek-probe 2>$null  # Windows'ta bağlı dosyalar kilitli kalıyor
+      robocopy . "$(D)" /E /NFL /NDL /NJH /NJS /XD .git e2e deploy docs .shots node_modules dist /XF *.png .env azure-pipelines.yml README.md test.mjs
+      if ($LASTEXITCODE -ge 8) { exit $LASTEXITCODE }; exit 0
+    displayName: Copy sources to server folder
+
+  - powershell: |
+      Set-Location "$(D)"
+      docker compose up -d --build 2>&1 | Write-Host
+      if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      foreach ($i in 1..30) {
+        $s = docker inspect sunpeek --format '{{.State.Health.Status}}'; $a = docker inspect sunpeek-api --format '{{.State.Health.Status}}'
+        if ($s -eq 'healthy' -and $a -eq 'healthy') { Write-Host "sunpeek: $s, sunpeek-api: $a"; exit 0 }
+        Start-Sleep 4
+      }
+      Write-Host "##vso[task.logissue type=error]Unhealthy: sunpeek=$s sunpeek-api=$a"; exit 1
+    displayName: Docker compose up + health
+
+  # Statik sayfalar Cloudflare Workers'a; ESRI anahtarı .env'den okunur, loga yazılmaz
+  - powershell: |
+      $esri = (Get-Content "$(D)\.env" | Where-Object { $_ -like 'ESRI_KEY=*' }) -replace '^ESRI_KEY=', ''
+      if (Test-Path dist) { Remove-Item -Recurse -Force dist }
+      docker buildx build -q --target static --build-arg "ESRI_KEY=$esri" -o dist . | Out-Null
+      if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      npx -y wrangler@4 deploy 2>&1 | Select-String -Pattern 'Uploaded|Current Version|ERROR'
+      if ($LASTEXITCODE) { exit $LASTEXITCODE }
+    displayName: Deploy static to Cloudflare
+    env:
+      CLOUDFLARE_API_TOKEN: $(CLOUDFLARE_API_TOKEN)
+      CLOUDFLARE_ACCOUNT_ID: 2b20c67041dc0b8bf29df2c494255ede
+      WRANGLER_SEND_METRICS: 'false'
+
+  - powershell: |
+      $r = Invoke-WebRequest -UseBasicParsing https://sunpeek.uk/api/health -TimeoutSec 20
+      if ($r.Content -ne 'ok') { exit 1 }; Write-Host 'live: ok'
+    displayName: Live check
