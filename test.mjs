@@ -324,5 +324,13 @@ console.log('paylaşılan duvar ok');
   assert.equal(addressFromUrl('https://www.booli.se/annons/5234567'), null);
   assert.equal(addressFromUrl('https://www.rightmove.co.uk/properties/151234567'), null);
   assert.equal(addressFromUrl('not a url at all ##'), null);
+  // numara önde: sokak türü varsa adres, yoksa posta kodunu adres sanmaz
+  assert.deepEqual(addressFromUrl('https://www.zillow.com/homedetails/123-Main-St-Springfield-IL-62704/1234567_zpid/'), ['123 main st springfield il']);
+  assert.deepEqual(addressFromUrl('https://www.daft.ie/for-sale/apartment-12-main-street-dublin-2/1234567'), ['12 main street dublin']);
+  assert.deepEqual(addressFromUrl('https://www.domain.com.au/12-smith-street-surry-hills-nsw-2010-2017123456'), ['12 smith street surry hills nsw']);
+  assert.deepEqual(addressFromUrl('https://example.fr/annonce/vente-appartement-12-rue-de-la-paix-paris/123456'), ['12 rue de la paix paris']);
+  assert.deepEqual(addressFromUrl('https://www.boligsiden.dk/adresse/vestergade-12-1456-koebenhavn-k-01011234_5678'), ['vestergade 12']);
+  assert.equal(addressFromUrl('https://www.zillow.com/homedetails/1234567_zpid/'), null);
+  assert.equal(addressFromUrl('https://www.daft.ie/for-sale/house-12-the-elms-dublin-2/1234567'), null);
 }
 console.log('ilan bağlantısı ok');

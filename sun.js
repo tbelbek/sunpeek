@@ -450,12 +450,24 @@ const LISTING_NOISE = new Set(('bostad lagenhet lägenhet villa radhus parhus fr
   'piso casa venta alquiler inmueble habitaciones koop huur huis appartement detail woonhuis bovenwoning benedenwoning ' +
   'for sale rent property properties details listing flat apartment house bedroom bedrooms www com html php adresse ' +
   'bolig ejerlejlighed rakkerhus leilighet enebolig kohde asunto myytavana kerrostalo omakotitalo').split(' '));
+const STREET_TYPE = new Set(('street st road rd avenue ave lane ln drive dr close court ct place pl way terrace crescent cres boulevard blvd square sq gardens mews parade ' +
+  'rue avenue boulevard bd chemin allee allée impasse quai cours route').split(' '));
+const PATH_WORD = /^(homedetails|details|detail|property|properties|listing|listings|annonce|expose|objekt|kohde|for|sale)$/; // yol parçası, sokak değil
 export function addressFromUrl(raw) {
   let u; try { u = new URL(/^https?:\/\//i.test(raw) ? raw : 'https://' + raw); } catch { return null; }
-  const words = decodeURIComponent(u.pathname).toLowerCase().split(/[\/\-_+.,]+/).filter(Boolean)
+  const clean = t => t.split(/[\-_+.,]+/).filter(Boolean)
     .filter(w => !LISTING_NOISE.has(w) && !/^\d{5,}$/.test(w) && !/^\d+(rum|rok|kvm|m2|zi|p|pcs|bed|br)$/.test(w));
-  const i = words.findIndex((w, k) => k > 0 && /^\d{1,4}[a-z]?$/.test(w) && /^[\p{L}]{3,}$/u.test(words[k - 1]));
-  if (i < 0) return null;
+  const path = decodeURIComponent(u.pathname).toLowerCase(), words = clean(path.replace(/\//g, '-')), isNum = w => /^\d{1,4}[a-z]?$/.test(w);
+  // Önce numara-önde biçim (İngiltere, İrlanda, ABD, Avustralya, Fransa: …/123-main-st-springfield…, …/12-rue-de-la-paix-paris):
+  // numaradan sonraki 4 kelimede bir sokak türü olmalı; yoksa "dublin 2", "nsw 2010" gibi posta kodları adres sanılırdı
+  // (yol parçası içinde aranır: parça sınırını aşan kelime — "…-il-62704/1234567_zpid" — adrese karışmasın)
+  for (const seg of path.split('/')) {
+    const ws = clean(seg), n = ws.findIndex((w, k) => isNum(w) && ws.slice(k + 1, k + 5).some(x => STREET_TYPE.has(x)));
+    if (n >= 0) { const rest = []; for (const w of ws.slice(n + 1)) { if (!/^[\p{L}]+$/u.test(w) || rest.length === 6) break; rest.push(w); } return [`${ws[n]} ${rest.join(' ')}`]; }
+  }
+  const i = words.findIndex((w, k) => k > 0 && isNum(w) && /^[\p{L}]{3,}$/u.test(words[k - 1]) && !PATH_WORD.test(words[k - 1]));
+  // önünde "numara + kelime" varsa biçim numara-önde ama sokak türü tanınmadı ("12-the-elms-dublin-2"): yanlış adres yerine hiç
+  if (i < 0 || words.slice(0, i - 1).some((w, k) => isNum(w) && /^[\p{L}]/u.test(words[k + 1] ?? ''))) return null;
   const street = words[i - 1], num = words[i] + (/^[a-z]$/.test(words[i + 1] ?? '') ? words[i + 1] : '');
   const place = words.slice(0, i - 1).filter(w => /^[\p{L}]{3,}$/u.test(w)).slice(-1)[0]; // ilçe/şehir: sokaktan önceki son kelime
   return [place ? `${street} ${num}, ${place}` : null, `${street} ${num}`].filter(Boolean);
