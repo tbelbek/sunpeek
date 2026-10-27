@@ -483,6 +483,22 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
       check('izin: Daha fazla › istatistik açılınca betik yüklenir', !!b.d.querySelector('script[data-cf-beacon]') && b.win.localStorage.getItem('stats') === '1' && /on/.test(b.$('statsbtn').textContent));
       b.win.localStorage.setItem('stats', '0'); noErr('izin', b); b.close();
     },
+    // Telefonda panel başlıktan sürüklenir: yukarı tam ekran, aşağı yarım, en aşağı kapalı; kısa dokunma yine aç/kapa
+    async sheetDrag() {
+      const a = await open({ lang: 'en', w: 375, h: 812 });
+      await a.go(57.6935, 11.9575);
+      const s = a.d.querySelector('#sheet > summary'), cl = a.d.body.classList, sh = a.$('sheet'), y = () => s.getBoundingClientRect().top + 10;
+      const pe = (t, cy) => s.dispatchEvent(new a.win.PointerEvent(t, { bubbles: true, clientY: cy, pointerId: 1 }));
+      const drag = async (y1) => { const y0 = y(); pe('pointerdown', y0); pe('pointermove', (y0 + y1) / 2); pe('pointermove', y1); pe('pointerup', y1); s.click(); await sl(150); };
+      await drag(y() - 60); check('sürükle: yarımdan yukarı → tam ekran', cl.contains('expanded') && sh.open);
+      await drag(y() + 60); check('sürükle: tam ekrandan aşağı → yarım', !cl.contains('expanded') && sh.open && !cl.contains('closed'));
+      await drag(y() + 60); check('sürükle: yarımdan aşağı → kapalı', !sh.open && cl.contains('closed'));
+      await drag(y() - 60); check('sürükle: kapalıdan yukarı → yarım', sh.open && !cl.contains('expanded'));
+      check('sürükle: bırakınca satır içi yükseklik kalmaz', !a.$('panel').style.height);
+      pe('pointerdown', y()); pe('pointerup', y()); s.click(); await sl(150);
+      check('sürükle: kısa dokunma hâlâ kapatır', !sh.open);
+      noErr('sürükle', a); a.close();
+    },
     // Küçük telefon (320 px): mevsim çubuğu sığar, renk anahtarı harita düğmelerine binmez, kat etiketi tek satır
     async smallPhone() {
       const a = await open({ lang: 'fr', w: 320, h: 568 });

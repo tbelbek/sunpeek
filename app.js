@@ -773,6 +773,29 @@ document.addEventListener('visibilitychange', () => { if (compassOn && document.
 $('sheet').ontoggle = () => { document.body.classList.toggle('closed', !$('sheet').open); if (!$('sheet').open) document.body.classList.remove('expanded'); map.invalidateSize(); };
 // Telefonda paneli büyüt/küçült (başlıktaki ok); başlığa dokunmak ise paneli kapatır/açar
 $('expandbtn').onclick = e => { e.preventDefault(); e.stopPropagation(); document.body.classList.toggle('expanded'); setTimeout(() => map.invalidateSize(), 60); };
+// Telefonda paneli başlığından sürükle: bırakınca kapalı / yarım / tam ekrandan birine oturur. 40 px'ten uzun
+// sürükleme o yöndeki en yakın duruma gider (kısa bir fiske de yeter); daha kısası dokunma sayılır ve aç/kapa çalışır
+{
+  const p = $('panel'), s = $('sheet').firstElementChild; let y0 = null, h0 = 0, moved = false;
+  s.addEventListener('pointerdown', e => { if (innerWidth > 700 || e.target.closest('#expandbtn')) return; y0 = e.clientY; h0 = p.offsetHeight; moved = false; try { s.setPointerCapture(e.pointerId); } catch {} });
+  s.addEventListener('pointermove', e => {
+    if (y0 == null) return; const dy = y0 - e.clientY;
+    if (!moved && Math.abs(dy) < 8) return;
+    if (!moved) { moved = true; $('sheet').open = true; p.style.transition = 'none'; }
+    p.style.height = Math.max(64, Math.min(innerHeight - 68, h0 + dy)) + 'px';
+  });
+  const end = e => {
+    if (y0 == null) return; const dy = y0 - e.clientY; y0 = null; if (!moved) return;
+    const h = p.offsetHeight, H = innerHeight; p.style.height = ''; p.style.transition = '';
+    let c = [['closed', 64], ['half', H * 0.44], ['full', H - 68]];
+    const d = c.filter(([, v]) => dy > 0 ? v > h0 + 1 : v < h0 - 1); if (Math.abs(dy) > 40 && d.length) c = d;
+    const [st] = c.reduce((m, x) => Math.abs(x[1] - h) < Math.abs(m[1] - h) ? x : m);
+    document.body.classList.toggle('expanded', st === 'full'); $('sheet').open = st !== 'closed';
+    setTimeout(() => map.invalidateSize(), 60);
+  };
+  s.addEventListener('pointerup', end); s.addEventListener('pointercancel', end);
+  s.addEventListener('click', e => { if (moved) { e.preventDefault(); moved = false; } }); // sürüklemenin ardından gelen tıklama paneli ters çevirmesin
+}
 $('gpskat').onclick = () => {
   if (gAlt == null) { say(tr('noGpsAlt'), 'warn'); return; }
   if (z0() == null) { say(tr('noGround'), 'warn'); return; }
