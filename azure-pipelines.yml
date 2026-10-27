@@ -16,6 +16,10 @@ steps:
     clean: true
     fetchDepth: 1
 
+  # Ajandaki node 18; sun.js package.json'sız ESM, otomatik algı node 22+ ister (wrangler da 20+ ister)
+  - task: UseNode@1
+    inputs: { version: '22.x' }
+
   - script: node test.mjs
     displayName: Unit tests
 
