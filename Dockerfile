@@ -17,7 +17,7 @@ RUN set -eu; \
 # Cloudflare Workers'a yüklenen statik paket: docker buildx build --target static -o dist .
 FROM scratch AS static
 COPY --from=build /w/ /
-COPY _headers /
+COPY _headers _redirects /
 
 # 2) çalışma: yetkisiz kullanıcıyla 8080'de nginx
 FROM nginxinc/nginx-unprivileged:1.29-alpine
