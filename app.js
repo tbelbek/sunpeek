@@ -13,8 +13,10 @@ L.control.zoom({ position: 'topright' }).addTo(map); // telefonda gizli (iki par
 const NET = { sunpeek: 0, overpass: 0, overture: 0, elev: 0, terr: 0, tz: 0, photon: 0, tiles: 0, irr: 0 };
 // Servis sağlığı: her istek buradan geçer; hata/yanıtsızlık servis başına saklanır, konsola yazılır, döküm kartında görünür
 const NETERR = {};
-// Kullanım sayacı (sunucuda yalnız günlük toplam; kimlik/IP/konum yok, cihazdan bir şey okunmaz). ?ref= hangi kanaldan gelindiğini söyler.
-const REF = (r => /^[a-z0-9-]{1,32}$/.test(r ?? '') ? r : undefined)(new URLSearchParams(location.search).get('ref'));
+// Kullanım sayacı (sunucuda yalnız günlük toplam; kimlik/IP/konum, çerez ya da depo yok). ?ref= hangi kanaldan gelindiğini söyler.
+// Bağlantıda ref yoksa gelinen sitenin yalnız alan adı (www.reddit.com → reddit-com). Uygulama içi tarayıcılar çoğu zaman göndermez.
+const refHost = () => { try { const h = new URL(document.referrer).hostname.replace(/^www\./, ''); return h && h !== location.hostname ? h.replace(/\./g, '-').slice(0, 32) : null; } catch { return null; } };
+const REF = (r => /^[a-z0-9-]{1,32}$/.test(r ?? '') ? r : undefined)(new URLSearchParams(location.search).get('ref') ?? refHost());
 function track(e) { const q = new URLSearchParams(location.search); if (q.has('smoke') || q.has('e2e')) return; try { navigator.sendBeacon('/api/event', JSON.stringify({ e, ref: REF })); } catch {} }
 function svcFail(k, msg) { NETERR[k] = { msg: String(msg).slice(0, 80), t: new Date() }; console.warn('[SunPeek] servis sorunu:', k, msg); }
 async function sfetch(k, url, opt) {
