@@ -72,7 +72,8 @@ const dm = md => new Date(2000, +md.slice(0, 2) - 1, +md.slice(3)).toLocaleDateS
 const SEASON = lat => lat < 0 ? { spring: '09-23', summer: '12-21', autumn: '03-20', winter: '06-21' } : { spring: '03-20', summer: '06-21', autumn: '09-23', winter: '12-21' };
 applyStatic();
 for (const [k, v] of Object.entries(LANGS)) $('lang').add(new Option(v, k, false, k === lang));
-$('lang').onchange = () => { localStorage.setItem('lang', $('lang').value); location.reload(); };
+// Her dilin kendi adresi var (/sv/ …, İngilizce /); konum parametreleri (?at=…) korunur
+$('lang').onchange = () => { const l = $('lang').value; try { localStorage.setItem('lang', l); } catch {} location.href = (l === 'en' ? '/' : `/${l}/`) + location.search; };
 for (const [v, k] of [['', 'clockAuto'], ['24', 'clock24'], ['12', 'clock12']]) $('clock').add(new Option(tr(k), v, false, v === (CLOCK ?? '')));
 $('clock').onchange = () => { CLOCK = $('clock').value || null; CLOCK ? lsSet('clock', CLOCK) : localStorage.removeItem('clock'); draw(); renderHist(); };
 const today = new Date();
@@ -1009,7 +1010,7 @@ map.on('move rotate resize zoomend', drawSunMark); addEventListener('resize', dr
 $('sunmarkchk').onchange = () => { lsSet('sunmark', $('sunmarkchk').checked ? '1' : '0'); drawSunMark(); };
 // Yasal sayfalar seçili dilde (privacy.sv.html …); sayfadaki sabit bağlantılar da açılışta çevrilir
 const legal = page => lang === 'en' ? `${page}.html` : `${page}.${lang}.html`;
-for (const a of document.querySelectorAll('a[href^="privacy.html"], a[href^="terms.html"]')) { const [f, h] = a.getAttribute('href').split('#'); a.href = legal(f.replace('.html', '')) + (h ? '#' + h : ''); }
+for (const a of document.querySelectorAll('a[href^="/privacy.html"], a[href^="/terms.html"]')) { const [f, h] = a.getAttribute('href').split('#'); a.href = '/' + legal(f.slice(1).replace('.html', '')) + (h ? '#' + h : ''); }
 // Paylaşılan bağlantı aynı duvarı (konum + yön) ve katı açar: ?at=enlem,boylam&az=yön&f=kat
 const wallLink = () => `${location.origin}/?at=${house.lat.toFixed(6)},${house.lon.toFixed(6)}&az=${Math.round(house.az)}&f=${kat()}`;
 async function shareWall(addr, sum, win) {
@@ -1039,6 +1040,13 @@ const askStats = () => { if (lsGet('stats') == null && !$('modal').open && !new 
 if (lsGet('stats') === '1') loadStats(); else askStats();
 $('modal').addEventListener('close', askStats);
 drawStats();
+// Hakkında: kim/ne olduğu ve iletişim (hello@sunpeek.uk, Cloudflare Email Routing ile yönlenir)
+$('aboutbtn').onclick = () => {
+  openCard(`<h2 id="cardtitle">${tr('infoTitle')}</h2><p>${tr('infoText')}</p>
+    <p>${tr('infoContact')} <a href="mailto:hello@sunpeek.uk">hello@sunpeek.uk</a> · <a href="https://github.com/tbelbek/sunpeek/issues" target="_blank" rel="noopener">GitHub</a></p>
+    <div class="actions"><button class="btn" id="aboutClose">${tr('close')}</button></div>`);
+  $('aboutClose').onclick = closeCard;
+};
 $('netbtn').onclick = () => {
   const errOf = { dsSunpeek: 'sunpeek', dsOverpass: 'overpass', dsOverture: 'overture', dsElev: 'elev', dsTerr: 'terr', dsTZ: 'tz', dsPhoton: 'photon', dsIrr: 'irr', dsTiles: 'tiles' };
   const row = (k, n) => { const e = NETERR[errOf[k]]; return `<tr><td>${esc(tr(k))}${e ? `<div class="bad">${esc(tr('svcErr', { e: e.msg, t: e.t.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', ...H12() }) }))}</div>` : ''}</td><td>${n == null ? '' : esc(tr('reqs', { n }))}</td></tr>`; };

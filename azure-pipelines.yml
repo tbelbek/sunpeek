@@ -22,7 +22,7 @@ steps:
   # deploy.sh'in scp listesiyle aynı dosyalar; /MIR yok, böylece .env ve sunucudaki diğer dosyalar silinmez
   - powershell: |
       docker stop sunpeek-probe 2>$null  # Windows'ta bağlı dosyalar kilitli kalıyor
-      robocopy . "$(D)" /E /NFL /NDL /NJH /NJS /XD .git e2e deploy docs .shots node_modules dist /XF *.png .env azure-pipelines.yml README.md test.mjs
+      robocopy . "$(D)" /E /NFL /NDL /NJH /NJS /XD .git e2e deploy docs .shots node_modules dist /XF screenshot-*.png .env azure-pipelines.yml README.md test.mjs
       if ($LASTEXITCODE -ge 8) { exit $LASTEXITCODE }; exit 0
     displayName: Copy sources to server folder
 

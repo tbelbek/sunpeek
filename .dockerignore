@@ -6,3 +6,4 @@ docs
 test.mjs
 README.md
 api/node_modules
+!icons/*.png

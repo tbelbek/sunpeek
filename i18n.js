@@ -1,4 +1,4 @@
-// Arayüz metinleri. Dil: localStorage 'lang' > tarayıcı dili > en. Yer tutucular: {ad}.
+// Arayüz metinleri. Dil: adres (/sv/ …) > localStorage 'lang' > tarayıcı dili > en. Yer tutucular: {ad}.
 // Kat her dilde 0 = zemin kat olarak yazılır (ülkeler farklı sayar: ABD'de "1st floor" zemindir, İsveç'te "våning 1" çoğu zaman öyle).
 export const LANGS = { en: 'English', sv: 'Svenska', tr: 'Türkçe', de: 'Deutsch', es: 'Español', fr: 'Français' };
 const T = {
@@ -23,7 +23,8 @@ const T = {
     statsOff: "Visit statistics: off",
     statsOffReload: "Statistics turned off; it takes effect when the page reloads.",
     legalPrivacy: "Privacy", legalTerms: "Terms",
-    dirs: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'], title: 'SunPeek — how much sun does this facade get?',
+    infoBtn: "About", infoTitle: "About SunPeek", infoText: "SunPeek is a free, independent side project: no ads, no account, and no tracking without your consent. It estimates direct sun from open map data, so it can be wrong; tell me when it is.", infoContact: "Questions, ideas or a wrong result:",
+    dirs: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'], title: 'SunPeek — how much sun does a balcony or window get?',
     desc: 'See how many hours of direct sun a building facade gets today, in summer and in winter. Shadows from buildings and hills, compass, history.',
     arrowTitle: "Compass: rotate the map with your phone", today: 'Today', spring: 'Spring', summer: 'Summer', autumn: 'Autumn', winter: 'Winter', playTitle: 'Play the day',
     pickHint: 'Tap the facade of the house you want to check', geo: 'Location', pick: 'Pick house', look: "House I'm facing", history: 'History',
@@ -186,7 +187,8 @@ const T = {
     statsOff: "Ziyaret istatistiği: kapalı",
     statsOffReload: "İstatistik kapatıldı; sayfa yeniden yüklenince geçerli olur.",
     legalPrivacy: "Gizlilik", legalTerms: "Kullanım koşulları",
-    dirs: ['K', 'KD', 'D', 'GD', 'G', 'GB', 'B', 'KB'], title: 'SunPeek — bu cephe ne kadar güneş alıyor?',
+    infoBtn: "Hakkında", infoTitle: "SunPeek hakkında", infoText: "SunPeek ücretsiz, bağımsız bir yan proje: reklam yok, hesap yok, iznin olmadan izleme yok. Doğrudan güneşi açık harita verisinden tahmin eder; bu yüzden yanılabilir, yanıldığında haber ver.", infoContact: "Soru, fikir ya da yanlış bir sonuç için:",
+    dirs: ['K', 'KD', 'D', 'GD', 'G', 'GB', 'B', 'KB'], title: 'SunPeek — balkon ve pencere ne kadar güneş alıyor?',
     desc: 'Bir binanın cephesinin bugün, yazın ve kışın kaç saat doğrudan güneş aldığını haritada gösterir. Bina ve tepe gölgeleri, pusula, geçmiş.',
     arrowTitle: "Pusula: haritayı telefonunla birlikte döndür", today: 'Bugün', spring: 'Bahar', summer: 'Yaz', autumn: 'Güz', winter: 'Kış', playTitle: 'Günü oynat',
     pickHint: 'Güneşini görmek istediğin evin cephesine dokun', geo: 'Konum', pick: 'Ev seç', look: 'Baktığım ev', history: 'Geçmiş',
@@ -349,7 +351,8 @@ const T = {
     statsOff: "Besöksstatistik: av",
     statsOffReload: "Statistiken är avstängd; det gäller när sidan laddas om.",
     legalPrivacy: "Integritet", legalTerms: "Villkor",
-    dirs: ['N', 'NO', 'Ö', 'SO', 'S', 'SV', 'V', 'NV'], title: 'SunPeek — hur mycket sol får den här fasaden?',
+    infoBtn: "Om", infoTitle: "Om SunPeek", infoText: "SunPeek är ett gratis, oberoende sidoprojekt: inga annonser, inget konto och ingen spårning utan ditt samtycke. Det uppskattar direkt sol utifrån öppna kartdata och kan därför ha fel; säg till när det har det.", infoContact: "Frågor, idéer eller ett felaktigt resultat:",
+    dirs: ['N', 'NO', 'Ö', 'SO', 'S', 'SV', 'V', 'NV'], title: 'SunPeek — hur mycket sol får balkongen och fönstren?',
     desc: 'Se hur många timmar direkt sol en husfasad får i dag, på sommaren och på vintern. Skuggor från hus och berg, kompass, historik.',
     arrowTitle: "Kompass: vrid kartan med telefonen", today: 'I dag', spring: 'Vår', summer: 'Sommar', autumn: 'Höst', winter: 'Vinter', playTitle: 'Spela upp dagen',
     pickHint: 'Tryck på fasaden på huset du vill kolla', geo: 'Plats', pick: 'Välj hus', look: 'Huset jag tittar på', history: 'Historik',
@@ -512,7 +515,8 @@ const T = {
     statsOff: "Besuchsstatistik: aus",
     statsOffReload: "Statistik ausgeschaltet; gilt nach dem Neuladen der Seite.",
     legalPrivacy: "Datenschutz", legalTerms: "Nutzungsbedingungen",
-    dirs: ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'], title: 'SunPeek — wie viel Sonne bekommt diese Fassade?',
+    infoBtn: "Über", infoTitle: "Über SunPeek", infoText: "SunPeek ist ein kostenloses, unabhängiges Nebenprojekt: keine Werbung, kein Konto und kein Tracking ohne deine Zustimmung. Es schätzt direkte Sonne aus offenen Kartendaten und kann sich daher irren; sag Bescheid, wenn es das tut.", infoContact: "Fragen, Ideen oder ein falsches Ergebnis:",
+    dirs: ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'], title: 'SunPeek — wie viel Sonne bekommen Balkon und Fenster?',
     desc: 'Zeigt, wie viele Stunden direkte Sonne eine Gebäudefassade heute, im Sommer und im Winter bekommt. Schatten von Gebäuden und Hügeln, Kompass, Verlauf.',
     arrowTitle: "Kompass: Karte mit dem Handy drehen", today: 'Heute', spring: 'Frühling', summer: 'Sommer', autumn: 'Herbst', winter: 'Winter', playTitle: 'Tag abspielen',
     pickHint: 'Tippe auf die Fassade des Hauses, das du prüfen willst', geo: 'Standort', pick: 'Haus wählen', look: 'Haus vor mir', history: 'Verlauf',
@@ -675,7 +679,8 @@ const T = {
     statsOff: "Estadísticas de visitas: desactivadas",
     statsOffReload: "Estadísticas desactivadas; se aplica al recargar la página.",
     legalPrivacy: "Privacidad", legalTerms: "Condiciones",
-    dirs: ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'], title: 'SunPeek — ¿cuánto sol recibe esta fachada?',
+    infoBtn: "Acerca de", infoTitle: "Acerca de SunPeek", infoText: "SunPeek es un proyecto paralelo, gratuito e independiente: sin anuncios, sin cuenta y sin seguimiento sin tu consentimiento. Estima el sol directo a partir de datos cartográficos abiertos, así que puede equivocarse; avísame cuando lo haga.", infoContact: "Preguntas, ideas o un resultado erróneo:",
+    dirs: ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'], title: 'SunPeek — ¿cuánto sol reciben el balcón y las ventanas?',
     desc: 'Muestra cuántas horas de sol directo recibe la fachada de un edificio hoy, en verano y en invierno. Sombras de edificios y colinas, brújula, historial.',
     arrowTitle: "Brújula: gira el mapa con el móvil", today: 'Hoy', spring: 'Primavera', summer: 'Verano', autumn: 'Otoño', winter: 'Invierno', playTitle: 'Reproducir el día',
     pickHint: 'Toca la fachada de la vivienda que quieres comprobar', geo: 'Ubicación', pick: 'Elegir casa', look: 'Casa que miro', history: 'Historial',
@@ -838,7 +843,8 @@ const T = {
     statsOff: "Statistiques de visite : désactivées",
     statsOffReload: "Statistiques désactivées ; effectif au rechargement de la page.",
     legalPrivacy: "Confidentialité", legalTerms: "Conditions",
-    dirs: ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'], title: 'SunPeek — combien de soleil reçoit cette façade ?',
+    infoBtn: "À propos", infoTitle: "À propos de SunPeek", infoText: "SunPeek est un projet personnel gratuit et indépendant : pas de publicité, pas de compte et aucun suivi sans votre consentement. Il estime le soleil direct à partir de données cartographiques ouvertes et peut donc se tromper ; signalez-le-moi quand c'est le cas.", infoContact: "Questions, idées ou résultat erroné :",
+    dirs: ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'], title: 'SunPeek — combien de soleil reçoivent le balcon et les fenêtres ?',
     desc: "Montre combien d'heures de soleil direct reçoit la façade d'un bâtiment aujourd'hui, en été et en hiver. Ombres des bâtiments et des collines, boussole, historique.",
     arrowTitle: "Boussole : faire tourner la carte avec le téléphone", today: "Aujourd'hui", spring: 'Printemps', summer: 'Été', autumn: 'Automne', winter: 'Hiver', playTitle: 'Lire la journée',
     pickHint: 'Touchez la façade du logement à vérifier', geo: 'Position', pick: 'Choisir', look: 'Bâtiment en face', history: 'Historique',
@@ -982,7 +988,7 @@ const T = {
   },
 };
 // Object.hasOwn: bozuk/kötü bir 'lang' değeri ('__proto__', 'constructor') prototipe çözülmesin
-const pick = () => { let s = null; try { s = localStorage.getItem('lang'); } catch {} if (Object.hasOwn(T, s)) return s; for (const l of navigator.languages ?? [navigator.language]) { const b = String(l).slice(0, 2).toLowerCase(); if (Object.hasOwn(T, b)) return b; } return 'en'; };
+const pick = () => { const p = globalThis.location?.pathname.match(/^\/([a-z]{2})\//)?.[1]; if (Object.hasOwn(T, p)) { try { localStorage.setItem('lang', p); } catch {} return p; } let s = null; try { s = localStorage.getItem('lang'); } catch {} if (Object.hasOwn(T, s)) return s; for (const l of navigator.languages ?? [navigator.language]) { const b = String(l).slice(0, 2).toLowerCase(); if (Object.hasOwn(T, b)) return b; } return 'en'; };
 export const lang = pick();
 export const t = (k, v = {}) => String((Object.hasOwn(T[lang], k) ? T[lang][k] : Object.hasOwn(T.en, k) ? T.en[k] : k)).replace(/\{(\w+)\}/g, (_, n) => v[n] ?? '');
 export const dirs = T[lang].dirs, dirsLong = T[lang].dirsLong;

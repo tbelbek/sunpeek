@@ -26,3 +26,4 @@ Useful for house and flat hunting ("does this balcony get afternoon sun in winte
 
 - [Source code](https://github.com/tbelbek/sunpeek)
 - [Report a wrong result](https://github.com/tbelbek/sunpeek/issues)
+- Contact: hello@sunpeek.uk
