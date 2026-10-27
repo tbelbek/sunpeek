@@ -310,24 +310,28 @@ export function clearSkyDNI(alt) {
 // hourly: { t: [UTC ms, saat başı], dni: [], dhi: [] } — Open-Meteo değerleri önceki saatin ortalaması, bu yüzden güneş
 // konumu saatin ortasında (t − 30 dk) alınır. Doğrudan kısım yalnız yüzey görüyorsa ve bina/tepe kesmiyorsa sayılır;
 // dağınık kısım izotropik gök: DHI·(1+cos eğim)/2 (çevre binaların gökyüzünü kısmen kapatması ihmal edilir).
+// Yerden yansıyan: albedo 0,2 × GHI × (1−cos eğim)/2. Dikey yüzeyde GHI'nin ~%10'u; bu olmadan dikey panel PVGIS'in
+// %10–17 altında kalıyordu (2026-10-27, 7 şehir, ufuksuz). Sıkışık sokakta karşı binalar bunun bir kısmını keser (ihmal).
+export const ALBEDO = 0.2;
 export function annualPOA(env, f, eye, tilt, hourly) {
   const all = candidates(env, f, tilt);
   const zEye = (env.ground ? env.ground(f.lat, f.lon) : 0) + eye, sky = (1 + Math.cos(tilt * rad)) / 2;
-  let beam = 0, diffuse = 0;
+  const gnd = ALBEDO * (1 - Math.cos(tilt * rad)) / 2;
+  let beam = 0, diffuse = 0, reflected = 0;
   for (let i = 0; i < hourly.t.length; i++) {
     const dni = hourly.dni[i] || 0, dhi = hourly.dhi[i] || 0;
     if (dni <= 0 && dhi <= 0) continue;
     diffuse += dhi * sky;
-    if (dni <= 0) continue;
     const p = sunpos(f.lat, f.lon, new Date(hourly.t[i] - 1800000));
-    if (p.alt <= 0) continue;
+    reflected += gnd * (dhi + (p.alt > 0 ? dni * Math.sin(p.alt * rad) : 0));
+    if (dni <= 0 || p.alt <= 0) continue;
     const inc = incidence(p.alt, p.az, tilt, f.az);
     if (inc >= 90 || (tilt >= 90 && Math.abs(((p.az - f.az + 540) % 360) - 180) >= 85)) continue;
     if (env.hz && p.alt < horizonAlt(env.hz, p.az, zEye)) continue;
     if (blocked(all, p.alt, p.az, eye, f.id)) continue;
     beam += dni * Math.cos(inc * rad) * iam(inc);
   }
-  return { beam: beam / 1000, diffuse: diffuse / 1000, total: (beam + diffuse) / 1000 };
+  return { beam: beam / 1000, diffuse: diffuse / 1000, reflected: reflected / 1000, total: (beam + diffuse + reflected) / 1000 };
 }
 // Panel camının eğik ışığı yansıtması (geliş açısı kaybı), ASHRAE modeli b0 = 0,05
 export const iam = inc => inc >= 90 ? 0 : Math.max(0, 1 - 0.05 * (1 / Math.cos(inc * rad) - 1));

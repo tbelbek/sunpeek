@@ -220,6 +220,11 @@ console.log('panel ok');
   const roof = annualPOA({ el: [] }, f, 1.5, 35, H), wall = annualPOA({ el: [] }, f, 1.5, 90, H);
   assert.ok(roof.beam > wall.beam && wall.beam > 0, `çatı ${roof.beam.toFixed(0)} > duvar ${wall.beam.toFixed(0)}`);
   near(wall.diffuse, 876 * 0.5, 1, 'duvar gökyüzünün yarısını görür'); // 8760 h × 0,1 kWh × 0,5
+  // yerden yansıyan: duvar 0,2 × GHI × 0,5, düz yüzey hiç; GHI = DHI + DNI·sin(yükseklik)
+  let ghi = 0; for (let i = 0; i < t.length; i++) { const a = sunpos(f.lat, f.lon, new Date(t[i] - 1800000)).alt; ghi += 100 + (a > 0 ? 500 * Math.sin(a * Math.PI / 180) : 0); }
+  near(wall.reflected, ghi / 1000 * 0.1, 1e-6, 'duvar: albedo 0,2 × GHI × 0,5');
+  near(annualPOA({ el: [] }, f, 1.5, 0, H).reflected, 0, 1e-9, 'yatay yüzey yerden yansıma almaz');
+  near(wall.total, wall.beam + wall.diffuse + wall.reflected, 1e-9, 'toplam üç kısmın toplamı');
   const target = el([[-5, 5], [5, 5], [5, 15], [-5, 15], [-5, 5]], { height: '10' }, 1);
   const wallEl = el([[-200, -60], [200, -60], [200, -10], [-200, -10], [-200, -60]], { height: '300' }, 2);
   const F = frame(60, 18), [la, lo] = F.from(0, 4.6), g = { lat: la, lon: lo, az: 180, id: 1 };
