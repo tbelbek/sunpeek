@@ -367,7 +367,7 @@ export const pvYield = poa => ({ perKWp: poa * PV.pr, perM2: poa * PV.eff * PV.p
 //  küçük yapı (<30 m², 818 bina): 3–12,9 m, 4 m'ye göre → −%25 / +%220.   etiketli yükseklik: bağımsız veri yok → ±1,5 m.
 // Aralık tüm komşuları AYNI ANDA uca iter; bu birleşik senaryo tek binanın p90'ından uçtur. Saklama deneyinde (etiketli binaların
 // yarısı gizli, 9 şehir) gerçek sonuç aralığın içinde %96–98.
-const HB = { levels: [0.10, 0.55], user: [0.10, 0.55], gba: [0.35, 0.6], median: [0.30, 1.2], small: [0.25, 2.2], guess: [0.35, 1.5] };
+const HB = { levels: [0.10, 0.55], user: [0.10, 0.55], gba: [0.45, 0.8], median: [0.30, 1.2], small: [0.25, 2.2], guess: [0.35, 1.5] };
 export const heightBounds = b => b.src === 'height' ? [1.5, 1.5] : (HB[b.src] ?? HB.guess).map(k => k * b.h);
 const CAND = new WeakMap();
 // Halkanın gözlemciye (0,0) en yakın noktası: kenarlara nokta-doğru parçası uzaklığı (uzun duvarın ortası da yakalanır), içindeyse 0

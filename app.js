@@ -255,14 +255,14 @@ function drawHouse() {
   // kutucuk: tahmin, altında olası aralık (komşu yükseklikleri belirsizken) ya da "yok"un nedeni; aralık eskiden yalnız güven kartındaydı
   const why = r => { const n = { block: 0, terrain: 0, behind: 0 }; for (const s of r.slots) if (s.state in n) n[s.state]++;
     const k = Object.keys(n).sort((a, b) => n[b] - n[a])[0]; return n[k] ? tr({ block: 'whyBlock', terrain: 'whyTerrain', behind: 'whyBehind' }[k]) : tr('whyDark'); };
-  const sub = (r, d) => { const g = confOf(d); if (Math.abs(g.hi - g.lo) >= 1 / 12) return `${dur(g.lo)}–${dur(g.hi)}`; return r.visH < 1 / 60 ? why(r) : ''; };
+  const sub = (r, d) => { const g = confOf(d); if (trustOf(d).lvl !== 'hi' && Math.abs(g.hi - g.lo) >= 1 / 12) return `${dur(g.lo)}–${dur(g.hi)}`; return r.visH < 1 / 60 ? why(r) : ''; };
   const tile = (ic, lbl, r, d) => { const x = sub(r, d);
     return `<div class="tile">${icon(ic)}<b>${r.visH < 1 / 60 ? esc(cap(tr('none'))) : apOf(d) + dur(r.visH)}</b>${x ? `<small>${esc(x)}</small>` : ''}<span>${lbl}</span></div>`; };
   const addr = hist().find(e => e.key === `${house.id}:${Math.round(house.az)}`)?.addr;
   el.innerHTML = `<div class="tiles">${tile('calendar', dayLbl, house.day, $('date').value)}${tile('sun', tr('summerSol', { d: dm(S.summer) }), sum, `${y}-${S.summer}`)}${tile('snowflake', tr('winterSol', { d: dm(S.winter) }), win, `${y}-${S.winter}`)}</div>
     <button id="confchip" class="chip c-${lvl}" type="button" aria-haspopup="dialog"><span class="dot"></span><span>${esc(tr('confChip', { l: { hi: tr('conf_hi'), mid: tr('conf_mid'), lo: tr('conf_lo') }[lvl] }))}</span><span class="rng">${esc(dur(Rg.lo))} – ${esc(dur(Rg.hi))}</span>${icon('chevron-right')}</button>
     <div class="wins"><span>${dayLbl}</span><span>${fmt(house.day)}</span><span>${tr('summer')}</span><span>${fmt(sum)}</span><span>${tr('winter')}</span><span>${fmt(win)}</span></div>
-    <p class="note">${esc(tr('directNote'))}</p>
+    ${house.day.visH < 1 || win.visH < 1 ? `<p class="note">${esc(tr('directNote'))}${tip(tr('directTip'))}</p>` : ''}
 `;
   // hangi duvar seçili: kat kutusunun hemen üstünde (sonuçların altında kayboluyordu)
   $('fac').innerHTML = `<div class="facrow">${icon('house')}<div><div class="st">${house.demo ? esc(tr('demoTag')) + ' · ' : ''}${esc(cap(tr('wallFacing', { dir: dirsLong[Math.round(house.az / 45) % 8] })))}</div>
@@ -1013,7 +1013,7 @@ function askRow() {
   if (!r || r.delta < 0.5 || myFloors()[r.id]) return off();
   if (askId !== r.id) { askId = r.id; drawBuildings(); }
   const est = Math.min(80, Math.max(1, Math.round(r.h / 3)));
-  $('fac').insertAdjacentHTML('beforeend', `<div class="ask" id="ask"><p>${icon('building')}<span>${esc(tr('askFloors'))}</span></p>
+  $('fac').insertAdjacentHTML('beforeend', `<div class="ask" id="ask"><p>${icon('building')}<span>${esc(tr('askFloors'))}</span>${tip(tr('askHelp'))}</p>
     <div class="askrow"><div class="stepper"><button id="askMinus" class="iconbtn" type="button" aria-label="−">${icon('minus')}</button><input id="askN" type="number" min="1" max="80" step="1" value="${est}" inputmode="numeric" aria-label="${esc(tr('askFloorsShort'))}"><button id="askPlus" class="iconbtn" type="button" aria-label="+">${icon('plus')}</button></div>
     <button id="askSave" class="btn primary" type="button">${esc(tr('askSave'))}</button><button id="askX" class="iconbtn" type="button" aria-label="${esc(tr('close'))}">${icon('x')}</button></div></div>`);
   const n = () => Math.min(80, Math.max(1, Math.round(+$('askN').value || est)));
@@ -1031,7 +1031,7 @@ function saveFloors(id, n) {
   say(tr('askThanks', { n }), 'ok'); track('floors');
   if (g) fetch('/api/floors', { method: 'POST', body: JSON.stringify({ id, lat: g.lat, lon: g.lon, floors: n }) }).catch(() => {});
 }
-const treeRow = () => { const n = treesNear().length; return n ? `<div class="say warn treewarn">${icon('tree')}<span>${esc(tr('treesNear', { n }))}</span></div>` : ''; };
+const treeRow = () => { const n = treesNear().length; return n ? `<div class="say warn treewarn">${icon('tree')}<span>${esc(tr('treesNear', { n }))}</span>${tip(tr('treesTip'))}</div>` : ''; };
 const feedbackRow = () => fbNow() ? `<div class="fb">${icon('sun')}<span>${esc(tr('fbAsk'))}</span><button class="btn" type="button" data-a="sun">${esc(tr('fbSun'))}</button><button class="btn" type="button" data-a="shade">${esc(tr('fbShade'))}</button><button class="iconbtn" type="button" data-a="x" aria-label="${esc(tr('close'))}">${icon('x')}</button></div>` : '';
 async function sendFeedback(a) {
   const s = fbNow(), row = $('fac').querySelector('.fb');
@@ -1190,6 +1190,7 @@ function openConf() {
 // E2E test kancası (yalnız ?e2e ile): iç duruma salt okunur erişim, e2e/run.js kullanır
 if (new URLSearchParams(location.search).has('e2e')) window.__sp = { map, frame, get pt() { return pt; }, get house() { return house; }, get B() { return B; }, get last() { return last; }, get heading() { return heading; }, get cmpState() { return cmpState; }, get compassOn() { return compassOn; } };
 drawHeading(); // üstteki ok, konum gelmeden de durumunu göstersin
+$('empty').insertAdjacentHTML('beforeend', tip(tr('emptyTip')));
 track('visit');
 // Bağlantıyla konum: ?at=enlem,boylam — o noktaya gider ve oradaki binanın duvarını seçer (paylaşılabilir link).
 // Varsayılan açılış (izin sorgusu, Greenwich) atlanır: asenkron sorgu sonradan dönüp bağlantıdaki konumu eziyordu.

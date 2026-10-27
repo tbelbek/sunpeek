@@ -239,7 +239,7 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
       const shp = () => Object.values(a.sp.map._layers).filter(l => l.options?.fillColor === '#1e1b4b').length;
       check('gölgeler: düğmeyle açıldı, çokgenler çizildi', a.$('shadowbtn').getAttribute('aria-pressed') === 'true' && shp() > 0, shp());
       a.$('shadowbtn').click(); await sl(300); check('gölgeler: kapandı', shp() === 0, shp());
-      check('kat: GPS rakımı yoksa açıklama', /no altitude/.test(gtxt(a)), gtxt(a));
+      check('kat: GPS rakımı yoksa açıklama', /No GPS altitude/.test(gtxt(a)), gtxt(a));
       noErr('kat', a); a.close();
     },
     // 10. ❗ Yükseklik güveni: İstanbul Kadıköy'de uyarı ve açıklama kartı
@@ -293,7 +293,7 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
       await a.go(+(cla + (Math.random() - 0.5) * 0.09).toFixed(4), +(clo + (Math.random() - 0.5) * 0.13).toFixed(4));
       await until(() => a.$('retry'), 15000);
       const t = gtxt(a);
-      check('ağ hatası: görünür bina mesajı', /Couldn't load buildings/.test(t), t);
+      check('ağ hatası: görünür bina mesajı', /No buildings/.test(t), t);
       // arazi karoları önceki koşulardan tarayıcıda kalmış olabilir: o zaman arazi yüklenmiştir ve mesaj beklenmez
       check('ağ hatası: arazi mesajı (arazi yüklenemediyse)', a.sp.last?.ground ? true : /ground elevation|horizon/.test(t), t);
       check('ağ hatası: ↻ Tekrar dene düğmesi', a.$('retry'));
@@ -305,7 +305,7 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
       a.$('retry').click();
       await until(() => a.sp.B.buildings.length > 0, 90000);
       // binalar gelmeli; arazi servisi o an hız sınırındaysa (429) onun uyarısı ve ↻ kalabilir — bu doğru davranış
-      check('yeniden dene: bağlantı gelince binalar yüklendi', a.sp.B.buildings.length > 0 && !/Couldn't load buildings/.test(gtxt(a)), gtxt(a));
+      check('yeniden dene: bağlantı gelince binalar yüklendi', a.sp.B.buildings.length > 0 && !/No buildings/.test(gtxt(a)), gtxt(a));
       noErr('ağ hatası', a); a.close();
     },
     // 13. Dil değiştir: seçim kaydedilir, sayfa yeni dilde açılır
