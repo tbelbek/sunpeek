@@ -786,7 +786,7 @@ $('expandbtn').onclick = e => { e.preventDefault(); e.stopPropagation(); documen
   });
   const end = e => {
     if (y0 == null) return; const dy = y0 - e.clientY; y0 = null; if (!moved) return;
-    const h = p.offsetHeight, H = innerHeight; p.style.height = ''; p.style.transition = '';
+    const h = p.offsetHeight, H = innerHeight; p.style.transition = ''; p.style.height = ''; // önce geçiş geri gelir: panel parmaktan bırakıldığı yerden kayarak oturur
     let c = [['closed', 64], ['half', H * 0.44], ['full', H - 68]];
     const d = c.filter(([, v]) => dy > 0 ? v > h0 + 1 : v < h0 - 1); if (Math.abs(dy) > 40 && d.length) c = d;
     const [st] = c.reduce((m, x) => Math.abs(x[1] - h) < Math.abs(m[1] - h) ? x : m);
