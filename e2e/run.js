@@ -346,6 +346,20 @@ window.E2E_LOAD = async () => { // atama ifadesi: <script src> ile de yüklenir 
       check('geri dön: dokununca GPS konumuna döndü', a.sp.pt.distanceTo([51.4779, -0.0015]) < 1 && a.$('backbtn').hidden, a.sp.pt.distanceTo([51.4779, -0.0015]));
       noErr('geri dön', a); a.close();
     },
+    // Kullanıcı düzeltmesi: güven düşükken (Malmö, etiket az) en etkili etiketsiz binanın kat sayısı sorulur, turuncu vurgulanır;
+    // cevap cihazda saklanır, bina 'user' kaynağına geçer, sunucuya gönderilir, sonuç yeniden hesaplanır
+    async floorAsk() {
+      const a = await open({ lang: 'en', q: 'at=55.6045,13.0010&f=1&' });
+      const ask = await until(() => a.$('ask'), 60000);
+      check('kat sorusu: güven yüksek değilken sorulur', ask && /floors/.test(ask.innerText) && !/c-hi/.test(a.$('confchip').className), a.$('confchip')?.className);
+      check('kat sorusu: bina haritada turuncu', [...a.d.querySelectorAll('path')].some(p => p.getAttribute('stroke') === '#f59e0b'));
+      if (!ask) return a.close();
+      a.$('askPlus').click(); a.$('askMinus').click(); a.$('askN').value = 5; a.$('askSave').click(); await sl(800);
+      const f = JSON.parse(a.win.localStorage.getItem('floors') || '{}'), id = +Object.keys(f)[0], b = a.sp.B.buildings.find(x => x.id === id);
+      check('kat sorusu: cevap saklandı ve uygulandı', f[id] === 5 && b?.src === 'user' && Math.abs(b.h - 18) < 0.01, JSON.stringify({ f, src: b?.src, h: b?.h }));
+      check('kat sorusu: teşekkür mesajı', /Recalculated with 5 floors/.test(gtxt(a)), gtxt(a));
+      noErr('kat sorusu', a); a.close();
+    },
     // 17. Kat düğmeleri ve dokunma alanları
     async controls() {
       const a = await open({ lang: 'de' });

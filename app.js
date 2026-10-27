@@ -2,7 +2,7 @@
 import { overtureBuildings, terrariumElev } from './tiles.js';
 import { cget, cput, cmany, cprune, DAY } from './cache.js';
 import { t as tr, lang, LANGS, dirs, dirsLong, applyStatic } from './i18n.js';
-import { STOREY, zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, edgeFacing, addressFromUrl, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip, annualPOA, pvYield, PV, shadowRing, facadeRange } from './sun.js';
+import { STOREY, zoned, hmIn, maxFloor, sunpos, dayEvents, blocked, localize, frame, pickEdge, edgeFacing, addressFromUrl, rayEdge, facadeDay, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, heightConfidence, pip, annualPOA, pvYield, PV, shadowRing, facadeRange, sensitiveBuilding } from './sun.js';
 
 const $ = id => document.getElementById(id);
 const icon = (n, c = 'ic') => `<svg class="${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
@@ -57,6 +57,7 @@ const cone = L.polygon([], { color: '#4af', weight: 1, fillOpacity: 0.25, intera
 let acc = null, pt = null, accM = null, gAlt = null, gAltAcc = null, B = { buildings: [], own: [] }, req = 0;
 let last = null; // son çekim: {el, ground, hz, lat, lng} — binalar + zemin kotu + ufuk
 let cmpState = 'off'; // off | asking | waiting | nodata | denied | none — üstteki okta görünür
+let askId = null; // kat sorusu için haritada vurgulanan bina (OSM kimliği)
 let solar = false; // enerji bölümü onay kutusuyla açılır (tercih saklanır; lsGet tanımlanınca okunur)
 let tilt = 90; // yüzey: 90 = duvar, daha küçük = aynı yöne bakan çatı paneli
 let follow = false; // GPS takip modu (konum düğmesi); elle seçimde kapanır
@@ -156,7 +157,7 @@ function draw() {
   $('sumdot').className = 'dot ' + cls;
   // Cephe seçiliyse başlık günün cevabını verir; anlık durum saat kaydırıcısının altında (#now)
   $('sum').textContent = house ? (confOf().conf < 75 ? '≈ ' : '') + tr('sumHours', { h: dur(house.day.visH), d: $('date').value === todayStr ? tr('todayLower') : dm(`${pad(m)}-${pad(d)}`) }) : st;
-  $('eyeM').textContent = kat() ? `≈ ${eye().toFixed(1)} m` : floorName(0); // 0'ın zemin kat olduğu açık olsun
+  $('eyeM').textContent = kat() ? tr('windowAt', { m: eye().toFixed(1) }) : floorName(0); // 0'ın zemin kat olduğu açık olsun
   clearFloor();
 
   const polar = { day: tr('polarDay'), night: tr('polarNight') }[ev.polar];
@@ -251,17 +252,24 @@ function drawHouse() {
   const tSel = timeAt(+$('time').value), sl = house.day.slots.find(s => Math.abs(s.t - tSel) <= 150000);
   const incTxt = sl && sl.state !== 'behind' && sl.inc < 90 ? tr('incAt', { t: hm(tSel), a: sl.inc.toFixed(0) }) : tr('incNone', { t: hm(tSel) });
   // hiç güneş yoksa "≈ 0 m" yerine "yok" (m metre gibi okunuyordu)
-  const tile = (ic, lbl, r, d) => `<div class="tile">${icon(ic)}<b>${r.visH < 1 / 60 ? esc(cap(tr('none'))) : apOf(d) + dur(r.visH)}</b><span>${lbl}</span></div>`;
+  // kutucuk: tahmin, altında olası aralık (komşu yükseklikleri belirsizken) ya da "yok"un nedeni; aralık eskiden yalnız güven kartındaydı
+  const why = r => { const n = { block: 0, terrain: 0, behind: 0 }; for (const s of r.slots) if (s.state in n) n[s.state]++;
+    const k = Object.keys(n).sort((a, b) => n[b] - n[a])[0]; return n[k] ? tr({ block: 'whyBlock', terrain: 'whyTerrain', behind: 'whyBehind' }[k]) : tr('whyDark'); };
+  const sub = (r, d) => { const g = confOf(d); if (Math.abs(g.hi - g.lo) >= 1 / 12) return `${dur(g.lo)}–${dur(g.hi)}`; return r.visH < 1 / 60 ? why(r) : ''; };
+  const tile = (ic, lbl, r, d) => { const x = sub(r, d);
+    return `<div class="tile">${icon(ic)}<b>${r.visH < 1 / 60 ? esc(cap(tr('none'))) : apOf(d) + dur(r.visH)}</b>${x ? `<small>${esc(x)}</small>` : ''}<span>${lbl}</span></div>`; };
   const addr = hist().find(e => e.key === `${house.id}:${Math.round(house.az)}`)?.addr;
   el.innerHTML = `<div class="tiles">${tile('calendar', dayLbl, house.day, $('date').value)}${tile('sun', tr('summerSol', { d: dm(S.summer) }), sum, `${y}-${S.summer}`)}${tile('snowflake', tr('winterSol', { d: dm(S.winter) }), win, `${y}-${S.winter}`)}</div>
     <button id="confchip" class="chip c-${lvl}" type="button" aria-haspopup="dialog"><span class="dot"></span><span>${esc(tr('confChip', { l: { hi: tr('conf_hi'), mid: tr('conf_mid'), lo: tr('conf_lo') }[lvl] }))}</span><span class="rng">${esc(dur(Rg.lo))} – ${esc(dur(Rg.hi))}</span>${icon('chevron-right')}</button>
     <div class="wins"><span>${dayLbl}</span><span>${fmt(house.day)}</span><span>${tr('summer')}</span><span>${fmt(sum)}</span><span>${tr('winter')}</span><span>${fmt(win)}</span></div>
+    <p class="note">${esc(tr('directNote'))}</p>
 `;
   // hangi duvar seçili: kat kutusunun hemen üstünde (sonuçların altında kayboluyordu)
   $('fac').innerHTML = `<div class="facrow">${icon('house')}<div><div class="st">${house.demo ? esc(tr('demoTag')) + ' · ' : ''}${esc(cap(tr('wallFacing', { dir: dirsLong[Math.round(house.az / 45) % 8] })))}</div>
       ${addr ? `<div>${esc(addr)}</div>` : ''}</div>${tip(tr('facadeDetail', { az: house.az.toFixed(0), h: house.h.toFixed(0), est: house.guessed ? tr('estimated') : '', e: eye().toFixed(1) }))}
       <button id="unpick" class="iconbtn" aria-label="${tr('unpick')}" title="${tr('unpick')}">${icon('x')}</button></div>${treeRow()}${feedbackRow()}`;
   for (const b of $('fac').querySelectorAll('.fb [data-a]')) b.onclick = () => sendFeedback(b.dataset.a);
+  askRow();
   // paylaş (telefonda sistem menüsü, yoksa panoya) ve PDF (tarayıcının yazdırması): bağlantı aynı duvarı ve katı açar
   el.innerHTML += `<div class="acts"><button id="sharebtn" class="btn" type="button">${icon('share')}${esc(tr('share'))}</button><button id="printbtn" class="btn" type="button">${icon('printer')}${esc(tr('savePdf'))}</button></div>`;
   el.innerHTML += `<details id="solarbox" class="sec"${solar ? ' open' : ''}><summary><span class="sumic">${icon('sun')}${esc(tr('solarTitle'))}</span>${icon('chevron-down')}</summary>
@@ -417,8 +425,9 @@ function drawHeading() {
 
 function drawBuildings() {
   bLayer.clearLayers();
-  for (const b of B.buildings.concat(B.own)) if (Math.hypot(b.cx, b.cy) < 200) // telefonda hız: yalnız yakındakiler çizilir
-    L.polygon(b.geom.map(g => [g.lat, g.lon]), { color: '#fff', weight: 1, fill: false, dashArray: b.guessed ? '3 3' : null, interactive: false }).addTo(bLayer);
+  for (const b of B.buildings.concat(B.own)) if (Math.hypot(b.cx, b.cy) < 200 || b.id === askId) // telefonda hız: yalnız yakındakiler çizilir
+    L.polygon(b.geom.map(g => [g.lat, g.lon]), b.id === askId ? { color: '#f59e0b', weight: 3, fillColor: '#f59e0b', fillOpacity: 0.3, interactive: false }
+      : { color: '#fff', weight: 1, fill: false, dashArray: b.guessed ? '3 3' : null, interactive: false }).addTo(bLayer);
   if (house) L.polyline(house.edge, { color: '#00e5ff', weight: 6 }).addTo(bLayer);
 }
 
@@ -510,6 +519,8 @@ async function viaServer(keys, bg = false, quiet = bg) {
   if (missing.length) throw new Error('buildings: server could not fetch ' + missing.length + ' cells');
   return by;
 }
+let gbaCredit = false; // GBA yükseklikleri kullanıldıysa (CC BY-NC 4.0: atıf zorunlu, ticari kullanım yok)
+const useGBA = () => { if (gbaCredit) return; gbaCredit = true; map.attributionControl.addAttribution('heights: <a href="https://github.com/zhu-xlab/GlobalBuildingAtlas" target="_blank" rel="noopener">GlobalBuildingAtlas</a> (CC BY-NC 4.0)'); };
 const useOverture = () => map.attributionControl.addAttribution('buildings: <a href="https://docs.overturemaps.org/attribution/" target="_blank" rel="noopener">© Overture Maps Foundation</a> (ODbL)');
 async function fetchOverpass([s, w, n, e], quiet = false) { // kutu: güney, batı, kuzey, doğu (kış güneşi alçak: 30 m bina ~340 m'ye gölge düşürür)
   const a = `${s.toFixed(4)},${w.toFixed(4)},${n.toFixed(4)},${e.toFixed(4)}`;
@@ -596,10 +607,11 @@ async function refreshBuildings(force = false, attempt = 0) {
   const [el, gr, hz] = await Promise.allSettled([fetchEls(lat, lng), fetchElev(gridPoints(lat, lng), `zg:${lat.toFixed(4)},${lng.toFixed(4)}`),
     fetchElev(horizonPoints(hlat, hlng), `hz:${hlat},${hlng}`)]);
   if (id !== req) return;
-  last = { el: el.value ?? [], ground: gr.value ? makeGround(lat, lng, gr.value) : null, hz: hz.value ? makeHorizon(hz.value) : null, lat, lng,
+  last = { el: applyFloors(el.value ?? []), ground: gr.value ? makeGround(lat, lng, gr.value) : null, hz: hz.value ? makeHorizon(hz.value) : null, lat, lng,
            complete: el.status === 'fulfilled' && !!gr.value && !!hz.value, src: el.value?.backup ? 'overture' : 'osm' };
   if (el.value?.backup) upgradeLater(el.value.backup, id);
   B = localize(last.el, pt.lat, pt.lng, last.ground); B.ok = el.status === 'fulfilled'; statB();
+  if (B.buildings.some(b => b.src === 'gba')) useGBA();
   const fails = [];
   if (el.status === 'rejected') fails.push(tr('bFail', { e: el.reason.message }));
   if (!last.ground) fails.push(tr('gFail', { e: gr.reason.message }).trim());
@@ -986,6 +998,38 @@ function fbNow() {
   if (!house?.day || !gpsPt || gpsPt.distanceTo([house.lat, house.lon]) > 150 || lsGet(fbKey())) return null;
   const s = house.day.slots.find(x => Math.abs(x.t - Date.now()) <= 150000);
   return s && s.state !== 'behind' && $('date').value === todayStr ? s : null; // güneş ufkun altında ya da duvarın arkasında: soru anlamsız
+}
+// Kullanıcı düzeltmesi: güven yüksek değilse, sonucu en çok değiştiren yüksekliği etiketsiz binanın kat sayısı sorulur (haritada
+// turuncu). Cevap cihazda saklanır ve hemen uygulanır (sp:levels; OSM etiketi her zaman önce gelir), sunucuya da gönderilir:
+// en az iki farklı kişi uyuşunca herkese uygulanır. Kat sayısı zemin kat dahil (OSM building:levels gibi).
+const myFloors = () => lsJSON('floors', x => x && typeof x === 'object' && !Array.isArray(x)) ?? {};
+const untaggedEl = e => e.tags && e.tags.height == null && e.tags['building:levels'] == null;
+function applyFloors(el) { const f = myFloors(); return el.map(e => f[e.id] && untaggedEl(e) ? { ...e, tags: { ...e.tags, 'sp:levels': String(f[e.id]) } } : e); }
+function askRow() {
+  const off = () => { if (askId != null) { askId = null; drawBuildings(); } };
+  if (!house || house.demo || house.askNo || tilt !== 90 || trustOf().lvl === 'hi') return off();
+  const y = +$('date').value.slice(0, 4), S = SEASON(house.lat), md = s => s.split('-').map(Number);
+  const r = house.cache['ask|' + kat()] ??= sensitiveBuilding(house.env, house, eye(), [[y, ...md(S.summer)], [y, 3, 20], [y, ...md(S.winter)]], TZ);
+  if (!r || r.delta < 0.5 || myFloors()[r.id]) return off();
+  if (askId !== r.id) { askId = r.id; drawBuildings(); }
+  const est = Math.min(80, Math.max(1, Math.round(r.h / 3)));
+  $('fac').insertAdjacentHTML('beforeend', `<div class="ask" id="ask"><p>${icon('building')}<span>${esc(tr('askFloors'))}</span></p>
+    <div class="askrow"><div class="stepper"><button id="askMinus" class="iconbtn" type="button" aria-label="−">${icon('minus')}</button><input id="askN" type="number" min="1" max="80" step="1" value="${est}" inputmode="numeric" aria-label="${esc(tr('askFloorsShort'))}"><button id="askPlus" class="iconbtn" type="button" aria-label="+">${icon('plus')}</button></div>
+    <button id="askSave" class="btn primary" type="button">${esc(tr('askSave'))}</button><button id="askX" class="iconbtn" type="button" aria-label="${esc(tr('close'))}">${icon('x')}</button></div></div>`);
+  const n = () => Math.min(80, Math.max(1, Math.round(+$('askN').value || est)));
+  $('askMinus').onclick = () => { $('askN').value = Math.max(1, n() - 1); };
+  $('askPlus').onclick = () => { $('askN').value = Math.min(80, n() + 1); };
+  $('askX').onclick = () => { house.askNo = true; $('ask').remove(); off(); };
+  $('askSave').onclick = () => saveFloors(r.id, n());
+}
+function saveFloors(id, n) {
+  const f = myFloors(); f[id] = n; lsSet('floors', JSON.stringify(f));
+  const b = B.buildings.concat(B.own).find(x => x.id === id), g = b?.geom?.[0]; // sunucu binayı ilk noktasının hücresinde arar
+  house.env = { ...house.env, el: applyFloors(house.env.el) }; if (last) last = { ...last, el: applyFloors(last.el) };
+  house.cache = {}; delete house.envR; askId = null;
+  B = localize(last.el, pt.lat, pt.lng, last.ground); B.ok = true; statB(); drawBuildings(); draw();
+  say(tr('askThanks', { n }), 'ok'); track('floors');
+  if (g) fetch('/api/floors', { method: 'POST', body: JSON.stringify({ id, lat: g.lat, lon: g.lon, floors: n }) }).catch(() => {});
 }
 const treeRow = () => { const n = treesNear().length; return n ? `<div class="say warn treewarn">${icon('tree')}<span>${esc(tr('treesNear', { n }))}</span></div>` : ''; };
 const feedbackRow = () => fbNow() ? `<div class="fb">${icon('sun')}<span>${esc(tr('fbAsk'))}</span><button class="btn" type="button" data-a="sun">${esc(tr('fbSun'))}</button><button class="btn" type="button" data-a="shade">${esc(tr('fbShade'))}</button><button class="iconbtn" type="button" data-a="x" aria-label="${esc(tr('close'))}">${icon('x')}</button></div>` : '';

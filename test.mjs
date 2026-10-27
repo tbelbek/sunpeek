@@ -1,6 +1,6 @@
 // node test.mjs — sun.js'i bağımsız bir NOAA (Python) uygulamasına ve sunrise-sunset.org değerlerine karşı doğrular.
 import assert from 'node:assert/strict';
-import { heightBounds, sunpos, dayEvents, blocked, blocker, shadowRing, facadeRange, localize, frame, pickEdge, rayEdge, facadeDay, height, maxFloor, zoned, hmIn, heightConfidence, incidence, clearSkyDNI, annualPOA, pvYield, iam, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, HZ_D, HZ_STEP } from './sun.js';
+import { heightBounds, sunpos, dayEvents, blocked, blocker, shadowRing, facadeRange, localize, frame, pickEdge, rayEdge, facadeDay, height, maxFloor, zoned, hmIn, heightConfidence, incidence, clearSkyDNI, annualPOA, pvYield, iam, gridPoints, makeGround, horizonPoints, makeHorizon, horizonAlt, HZ_D, HZ_STEP, sensitiveBuilding } from './sun.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} != ${b}`);
 const utcHM = t => new Date(Math.floor(t / 60000) * 60000).toISOString().slice(11, 16); // saniyeyi keser
@@ -210,6 +210,27 @@ assert.ok(clearSkyDNI(5) < clearSkyDNI(30), 'alçak güneş daha zayıf');
   assert.ok(roof.energy > 4 && roof.energy < 9, `açık gök yaz günü 35° güney panel ~6-8 kWh/m²: ${roof.energy.toFixed(2)}`);
 }
 console.log('panel ok');
+
+// Ek yükseklik kaynakları: OSM etiketi > kullanıcı kat sayısı (sp:levels) > GBA (gba:height) > tür varsayılanı
+{
+  assert.equal(height({ building: 'yes', 'gba:height': '21.4' }).src, 'gba'); assert.equal(height({ building: 'yes', 'gba:height': '21.4' }).h, 21.4);
+  assert.equal(height({ building: 'yes', 'gba:height': '1.2' }).src, 'guess', '2 m altı GBA değeri atlanır');
+  const u = height({ building: 'yes', 'sp:levels': '5', 'gba:height': '30' });
+  assert.ok(u.src === 'user' && !u.guessed && u.levels === 5, 'kullanıcı kat sayısı GBA\'dan önce gelir');
+  assert.equal(height({ building: 'yes', 'building:levels': '3', 'sp:levels': '9' }).src, 'levels', 'OSM etiketi kullanıcı cevabından önce gelir');
+  assert.equal(height({ building: 'yes', height: '12', 'gba:height': '30' }).h, 12);
+  assert.equal(height({ building: 'yes', 'sp:levels': '0' }).src, 'guess', 'geçersiz kat sayısı yok sayılır');
+}
+// Kullanıcıya sorulacak bina: güneyde güneşi kesen etiketsiz bina (2) seçilir; daha güneydeki etiketli yüksek bina (3) sorulmaz
+{
+  const tgt = el(sq(0, 10, 5), { building: 'yes', height: '15' }, 1), unk = el([[-30, -25], [30, -25], [30, -15], [-30, -15], [-30, -25]], { building: 'apartments' }, 2),
+    tall = el([[-60, -90], [60, -90], [60, -80], [-60, -80], [-60, -90]], { building: 'yes', height: '40' }, 3);
+  const Fr = frame(60, 18), [la, lo] = Fr.from(0, 4.6), f = { lat: la, lon: lo, az: 180, id: 1 };
+  const s = sensitiveBuilding({ el: [tgt, unk, tall], ground: null, hz: null }, f, 4.5, [[2025, 3, 20], [2025, 12, 21]]);
+  assert.ok(s && s.id === 2 && s.delta > 0.25 && s.src !== 'height', JSON.stringify(s));
+  assert.equal(sensitiveBuilding({ el: [tgt, tall], ground: null, hz: null }, f, 4.5, [[2025, 3, 20]]), null, 'yalnız etiketli bina varsa soru yok');
+}
+console.log('kullanıcı düzeltmesi ok');
 
 // Yıllık: sentetik saatlik veri. Her saat DNI 500 / DHI 100 W/m² ve gölge yoksa, güneye bakan 35° panel duvardan fazla toplar;
 // güneydeki yüksek duvar doğrudan kısmı keser, dağınık kısım kalır.

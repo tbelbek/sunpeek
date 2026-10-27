@@ -53,6 +53,10 @@ export const STOREY = 3;
 // OSM etiketinden bina yüksekliği. guessed: etiket yoksa true (bina türüne göre varsayılan).
 // src: yüksekliğin kaynağı (güven aralığı için): 'height' ölçülmüş, 'levels' kat sayısından, 'guess' türe göre varsayılan
 // (localize'da 'median': yakındaki aynı türün ortancası). minH: havada başlayan yapı (köprü, çıkma) — altından ışık geçer.
+// Kat sayısıyla yükseklikte çatı payı (roof:height/roof:levels yoksa): 3 m. tools/validate/ref.mjs ile (2026-10-27) Münih LoD2 ve
+// Amsterdam 3DBAG'e göre (gerçek = çatının %70'lik yüksekliği): 1 m'de gerçek/model ortancası 1,21 (Münih, 1091 bina) ve 1,16
+// (Amsterdam); 3 m'de 1,16 ve 1,02, ekinokta duvar sonucu hatası 0,69 → 0,64 sa. Payın alt sınırını genişletmek kapsamayı artırmadı.
+const ROOF = 3;
 export function height(t) {
   const r = heightOnly(t), mh = num(t.min_height), ml = num(t['building:min_level']);
   return { ...r, minH: !isNaN(mh) ? mh : !isNaN(ml) ? ml * STOREY : 0 };
@@ -62,7 +66,13 @@ function heightOnly(t) {
   const lv = num(t['building:levels']), levels = isNaN(lv) || lv > 300 ? null : lv;
   // kat yüksekliği: hem yükseklik hem kat sayısı varsa binanın kendi değeri (eski binalarda tavan yüksek), yoksa STOREY
   if (!isNaN(h)) return { h, levels, storey: levels ? Math.min(4.2, Math.max(2.6, h / levels)) : STOREY, guessed: false, src: 'height' };
-  if (levels != null) { const rh = num(t['roof:height']), rl = num(t['roof:levels']); return { h: lv * STOREY + (!isNaN(rh) ? rh : !isNaN(rl) ? rl * 2.5 : 1), levels, storey: STOREY, guessed: false, src: 'levels' }; }
+  if (levels != null) { const rh = num(t['roof:height']), rl = num(t['roof:levels']); return { h: lv * STOREY + (!isNaN(rh) ? rh : !isNaN(rl) ? rl * 2.5 : ROOF), levels, storey: STOREY, guessed: false, src: 'levels' }; }
+  // OSM etiketi yoksa: kullanıcıların bildirdiği kat sayısı (sp:levels; sunucuda en az iki kişi uyuşursa ya da kişinin kendi cevabı),
+  // sonra GlobalBuildingAtlas (gba:height, uydu görüntüsünden makine öğrenmesi; 2 m altı yapılar için güvenilmez, atlanır)
+  const ul = num(t['sp:levels']);
+  if (!isNaN(ul) && ul >= 1 && ul <= 80) return { h: ul * STOREY + ROOF, levels: ul, storey: STOREY, guessed: false, src: 'user' };
+  const g = num(t['gba:height']);
+  if (!isNaN(g) && g >= 2) return { h: g, levels: null, storey: STOREY, guessed: false, src: 'gba' };
   const def = { garage: 3, garages: 3, shed: 3, carport: 3, roof: 3, hut: 3, house: 6, detached: 6, semidetached_house: 6, terrace: 6, apartments: 12, residential: 12 };
   return { h: Object.hasOwn(def, t.building) ? def[t.building] : 9, levels: null, storey: STOREY, guessed: true, src: 'guess' }; // hasOwn: "constructor" gibi etiketler prototipe çözülmesin
 }
@@ -357,7 +367,7 @@ export const pvYield = poa => ({ perKWp: poa * PV.pr, perM2: poa * PV.eff * PV.p
 //  küçük yapı (<30 m², 818 bina): 3–12,9 m, 4 m'ye göre → −%25 / +%220.   etiketli yükseklik: bağımsız veri yok → ±1,5 m.
 // Aralık tüm komşuları AYNI ANDA uca iter; bu birleşik senaryo tek binanın p90'ından uçtur. Saklama deneyinde (etiketli binaların
 // yarısı gizli, 9 şehir) gerçek sonuç aralığın içinde %96–98.
-const HB = { levels: [0.10, 0.55], median: [0.30, 1.2], small: [0.25, 2.2], guess: [0.35, 1.5] };
+const HB = { levels: [0.10, 0.55], user: [0.10, 0.55], gba: [0.35, 0.6], median: [0.30, 1.2], small: [0.25, 2.2], guess: [0.35, 1.5] };
 export const heightBounds = b => b.src === 'height' ? [1.5, 1.5] : (HB[b.src] ?? HB.guess).map(k => k * b.h);
 const CAND = new WeakMap();
 // Halkanın gözlemciye (0,0) en yakın noktası: kenarlara nokta-doğru parçası uzaklığı (uzun duvarın ortası da yakalanır), içindeyse 0
@@ -475,4 +485,26 @@ export function addressFromUrl(raw) {
   const street = words[i - 1], num = words[i] + (/^[a-z]$/.test(words[i + 1] ?? '') ? words[i + 1] : '');
   const place = words.slice(0, i - 1).filter(w => /^[\p{L}]{3,}$/u.test(w)).slice(-1)[0]; // ilçe/şehir: sokaktan önceki son kelime
   return [place ? `${street} ${num}, ${place}` : null, `${street} ${num}`].filter(Boolean);
+}
+
+// Kullanıcı düzeltmesi: sonucu en çok değiştiren, yüksekliği OSM'de etiketsiz bina (etiketli binada cevap sorulmaz: OSM önce gelir).
+// Adaylar: verilen günlerde güneşi en uzun kesen etiketsiz binalar (ilk 3); hiçbiri yoksa önündeki en yakın etiketsiz binalar
+// (yükseklik payının üst ucunda kesebilecek olanlar). Her aday kendi payının iki ucuna itilir; günlerin toplam saat farkı en büyük olan döner.
+export const ASKABLE = new Set(['guess', 'median', 'small', 'gba']);
+export function sensitiveBuilding(env, f, eye, days, tz = null, tilt = 90) {
+  const L0 = localize(env.el, f.lat, f.lon, env.ground), byId = new Map(L0.buildings.map(b => [b.id, b]));
+  const mins = new Map();
+  for (const [y, m, d] of days) for (const s of facadeDay(env, f, eye, y, m, d, 10, tz, tilt).slots) if (s.state === 'block' && s.by != null) mins.set(s.by, (mins.get(s.by) ?? 0) + 1);
+  let ids = [...mins].filter(([id]) => ASKABLE.has(byId.get(id)?.src)).sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0]);
+  if (!ids.length) { const nx = Math.sin(f.az * rad), ny = Math.cos(f.az * rad);
+    ids = L0.buildings.filter(b => b.id !== f.id && ASKABLE.has(b.src) && b.cx * nx + b.cy * ny > 0).sort((a, b) => Math.hypot(a.cx, a.cy) - Math.hypot(b.cx, b.cy)).slice(0, 3).map(b => b.id); }
+  let best = null;
+  for (const id of ids) {
+    const b = byId.get(id), [lo, hi] = heightBounds(b), at = h => ({ ...env, el: env.el.map(e => e.id === id ? { ...e, tags: { ...e.tags, height: h.toFixed(1) } } : e) });
+    const eL = at(Math.max(2, b.h - lo)), eH = at(b.h + hi);
+    let delta = 0;
+    for (const [y, m, d] of days) delta += Math.abs(facadeDay(eL, f, eye, y, m, d, 10, tz, tilt).visH - facadeDay(eH, f, eye, y, m, d, 10, tz, tilt).visH);
+    if (!best || delta > best.delta) best = { id, delta, h: b.h, src: b.src };
+  }
+  return best;
 }

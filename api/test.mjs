@@ -41,11 +41,11 @@ process.env.MISS_WAIT_MS = '800';
 const { createServer } = await import('./server.js');
 
 const sql = postgres(process.env.DATABASE_URL ?? 'postgres://postgres:t@127.0.0.1:55432/postgres', { onnotice: () => {} });
-await sql`drop table if exists cells, kv, blobs, feedback, stats, osm_cells, osm_cells_new, osm_stage, osm_cover, schema_migrations`;
+await sql`drop table if exists cells, kv, blobs, feedback, stats, gba, floor_reports, osm_cells, osm_cells_new, osm_stage, osm_cover, schema_migrations`;
 const quiet = { info() {}, warn() {}, error: console.error };
 const { server, migrate, purge } = createServer(sql, { log: quiet });
 await migrate(); await migrate(); // göç iki kez: ikincisi bir şey yapmamalı
-assert.deepEqual((await sql`select version from schema_migrations`).map(r => r.version), ['001_cells.sql', '002_kv_blobs.sql', '003_feedback.sql', '004_osm_import.sql', '005_stats.sql']);
+assert.deepEqual((await sql`select version from schema_migrations`).map(r => r.version), ['001_cells.sql', '002_kv_blobs.sql', '003_feedback.sql', '004_osm_import.sql', '005_stats.sql', '006_gba.sql', '007_floors.sql']);
 
 // 0. şehir içe aktarma (import.mjs): OPL → Overpass biçimi, ilk noktanın hücresi; alan içindeki boş hücre = [] (Overpass'a gidilmez)
 const { importDir, polys } = await import('./import.mjs');
@@ -81,6 +81,31 @@ assert.equal((await sql`select count(*)::int as n from cells`)[0].n, 3);
 
 // 2. ikinci kullanıcı: aynı bölge veritabanından, Overpass'a gidilmez
 r = await get('/api/cells?k=' + k); assert.equal(hits, 1); assert.equal(r.body.cells['11537:2384'][0].id, 1);
+// 2b. GBA: etiketsiz binaya yanıtta 'gba:height' eklenir; etiketli binaya (id 2, height 9) eklenmez, veritabanındaki veri değişmez
+await sql`insert into gba (id, h, v) values (1, 21.4, 3), (2, 50, 1)`;
+r = await get('/api/cells?k=' + k);
+assert.equal(r.body.cells['11537:2384'][0].tags['gba:height'], '21.4');
+assert.ok(!Object.values(r.body.cells).flat().some(e => e.id === 2 && e.tags['gba:height']), 'etiketli binaya GBA yazılmaz');
+assert.ok(!JSON.stringify((await sql`select data from cells`).map(x => x.data)).includes('gba:'), 'önbellekteki OSM verisine yazılmaz');
+await sql`delete from gba`;
+// 2c. kat sayısı bildirimi: yalnız etiketsiz, bilinen bina; iki farklı kişi ±1 içinde uyuşunca yanıtta 'sp:levels' (ortanca)
+{
+  const post = (b, ip = '1.1.1.1') => fetch(base + '/api/floors', { method: 'POST', headers: { 'cf-connecting-ip': ip }, body: JSON.stringify(b) });
+  const ok = { id: 1, lat: 57.6889, lon: 11.9223, floors: 5 };
+  assert.equal((await post(ok)).status, 204);
+  assert.equal((await post({ ...ok, floors: 6 })).status, 204, 'aynı kişi cevabını değiştirebilir (tek oy)');
+  r = await get('/api/cells?k=' + k); assert.equal(r.body.cells['11537:2384'][0].tags['sp:levels'], undefined, 'tek kişi yetmez');
+  assert.equal((await post({ ...ok, floors: 5 }, '2.2.2.2')).status, 204);
+  r = await get('/api/cells?k=' + k); assert.equal(r.body.cells['11537:2384'][0].tags['sp:levels'], '5', 'iki kişi (5, 6) → ortanca');
+  assert.equal((await post({ ...ok, floors: 20 }, '3.3.3.3')).status, 204);
+  r = await get('/api/cells?k=' + k); assert.equal(r.body.cells['11537:2384'][0].tags['sp:levels'], undefined, 'uyuşmazlık (>1 kat) → uygulanmaz');
+  assert.equal((await post({ id: 2, lat: 57.6905, lon: 11.9223, floors: 3 })).status, 400, 'etiketli bina (height 9) bildirilemez');
+  assert.equal((await post({ ...ok, id: 999 })).status, 400, 'bilinmeyen bina');
+  for (const bad of [{ ...ok, floors: 0 }, { ...ok, floors: 81 }, { ...ok, floors: 2.5 }, { ...ok, id: -1 }, { ...ok, lat: 'x' }]) assert.equal((await post(bad)).status, 400, JSON.stringify(bad));
+  const rows = await sql`select * from floor_reports`;
+  assert.ok(rows.every(x => !/\d+\.\d+\.\d+\.\d+/.test(x.who) && x.who.length === 16), 'ham IP saklanmaz');
+  await sql`delete from floor_reports`;
+}
 
 // 3. bayat hücre (90 günden eski): hemen döner, arka planda yenilenir
 await sql`update cells set fetched_at = now() - interval '91 days' where i = 11537 and j = 2384`;

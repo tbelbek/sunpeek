@@ -116,6 +116,10 @@
   #sunmark span { font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px #000; } #sunmark.down { opacity: .45; }
   #sunmarkchk { width: 22px; height: 22px; }
   .treewarn { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; } .treewarn .ic { color: #16a34a; flex: none; }
+  .ask { margin: 6px 0; padding: 8px 8px 8px 10px; border-radius: 12px; background: #fff4e5; border: 1px solid #f59e0b; font-size: 13px; }
+  .ask p { display: flex; gap: 6px; margin: 0 0 6px; } .ask p .ic { color: #b45309; flex: none; }
+  .askrow { display: flex; align-items: center; gap: 6px; } .askrow .stepper { background: var(--card); } .askrow input { width: 44px; text-align: center; }
+  @media (prefers-color-scheme: dark) { .ask { background: #3a2a10; } }
   .fb { display: flex; align-items: center; gap: 6px; margin: 6px 0; padding: 6px 6px 6px 10px; border-radius: 12px; background: var(--accent-soft); font-size: 13px; }
   .fb > span { flex: 1; min-width: 0; } .fb .ic { color: var(--accent); flex: none; } .fb .btn { height: 36px; padding: 0 10px; font-size: 13px; }
   .acts { display: flex; gap: 8px; margin: 10px 0 4px; } .acts .btn { flex: 1; font-size: 14px; }
@@ -133,6 +137,8 @@
   .chip .dot { background: var(--muted); } .chip.c-hi .dot { background: var(--ok); } .chip.c-mid .dot { background: #f59e0b; } .chip.c-lo .dot { background: var(--bad); }
   .sumic { display: inline-flex; align-items: center; gap: 8px; } .sumic .ic { color: var(--accent); }
   .tile span { font-size: 13px; color: var(--muted); }
+  .tile small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: clamp(10px, 3.6cqi, 12px); color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1.25; margin: 1px 2px 2px; }
+  #house .note { margin: 6px 2px 0; font-size: 12px; color: var(--muted); }
   @media (prefers-color-scheme: dark) { .tile:first-child b { color: var(--accent); } }
   .estrow { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin-bottom: 8px; padding: 8px 12px; border: 0; border-radius: 12px; background: var(--warn-bg); color: var(--warn-fg); font-size: 14px; font-weight: 600; text-align: left; }
   .estrow .ic { width: 18px; height: 18px; } .estrow u { margin-left: auto; white-space: nowrap; }

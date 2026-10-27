@@ -5,6 +5,7 @@
 // GET /api/health → 200 "ok"
 // IP ya da kullanıcı bilgisi saklanmaz; yalnız hücre kimlikleri (~550 m) gelir.
 import http from 'node:http';
+import { createHash, randomBytes } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import postgres from 'postgres';
 import { overtureTile, OVERTURE } from '../tiles.js'; // istemciyle aynı okuyucu
@@ -114,9 +115,24 @@ export function createServer(sql, { log = console } = {}) {
       join unnest(${ij.map(x => x[0])}::int[], ${ij.map(x => x[1])}::int[]) as k(i, j) on o.i = k.i and o.j = k.j`) out[`${r.i}:${r.j}`] = r.data;
     for (const k of keys) if (!(k in out) && covered(k)) out[k] = [];
     const rest = keys.filter(k => !(k in out));
-    if (!rest.length) return { cells: out, missing: [] };
+    if (!rest.length) return { cells: await enrich(out), missing: [] };
     const r = await cached(rest);
-    return { cells: { ...out, ...r.cells }, missing: r.missing };
+    return { cells: await enrich({ ...out, ...r.cells }), missing: r.missing };
+  }
+  // Yüksekliği/kat sayısı etiketsiz binalara ek kaynak: GBA (gba tablosu) → etiket 'gba:height'. OSM etiketi her zaman önce gelir;
+  // ek kaynak OSM verisine yazılmaz, yanıt oluşturulurken eklenir (tablolar ayrı, OSM içe aktarımı bunları silmez).
+  const untagged = e => e.type === 'way' && e.tags?.building && e.tags.height == null && e.tags['building:levels'] == null;
+  async function enrich(cellsObj) {
+    const els = Object.values(cellsObj).flat().filter(untagged);
+    if (!els.length) return cellsObj;
+    const ids = [...new Set(els.map(e => e.id))], gba = new Map(), fl = new Map();
+    for (const r of await sql`select id, h from gba where id = any(${ids}::bigint[])`) gba.set(Number(r.id), r.h);
+    // kullanıcı kat sayısı: en az 2 farklı bildiren, en çok 1 kat fark → ortanca
+    for (const r of await sql`select id, percentile_disc(0.5) within group (order by floors) as f from floor_reports
+      where id = any(${ids}::bigint[]) group by id having count(*) >= 2 and max(floors) - min(floors) <= 1`) fl.set(Number(r.id), r.f);
+    for (const e of els) { const h = gba.get(e.id), f = fl.get(e.id);
+      if (h != null || f != null) e.tags = { ...e.tags, ...(h != null && { 'gba:height': h.toFixed(1) }), ...(f != null && { 'sp:levels': String(f) }) }; }
+    return cellsObj;
   }
 
   let osmDownUntil = 0;
@@ -249,6 +265,7 @@ export function createServer(sql, { log = console } = {}) {
       const u = new URL(req.url, 'http://x');
       if (u.pathname === '/api/feedback') return req.method === 'POST' ? await feedback(req, send) : send(405, { error: 'method' });
       if (u.pathname === '/api/event') return req.method === 'POST' ? await event(req, send) : send(405, { error: 'method' });
+      if (u.pathname === '/api/floors') return req.method === 'POST' ? await floors(req, send) : send(405, { error: 'method' });
       if (req.method !== 'GET') return send(405, { error: 'method' });
       if (u.pathname === '/api/health') { await sql`select 1`; return send(200, 'ok', 'text/plain'); }
       if (u.pathname === '/api/cells') { const keys = parse(u.searchParams.get('k')); return keys ? send(200, await cells(keys)) : send(400, { error: 'bad cells' }); }
@@ -275,7 +292,7 @@ export function createServer(sql, { log = console } = {}) {
   }
   // Kullanım sayacı: { e: olay, ref?: kaynak etiketi } → o günün toplamına +1. Kimlik, IP, konum yok.
   // ponytail: günde en çok 200 farklı ref (uydurma etiketle tablo şişirilemesin); geçmeyen ref '?' olarak sayılır
-  const EVENTS = new Set(['visit', 'demo', 'result', 'share', 'solar']), refs = new Set(); let refsDay = '';
+  const EVENTS = new Set(['visit', 'demo', 'result', 'share', 'solar', 'floors']), refs = new Set(); let refsDay = '';
   async function event(req, send) {
     let body = '';
     for await (const c of req) { body += c; if (body.length > 256) return send(413, { error: 'too large' }); }
@@ -287,8 +304,30 @@ export function createServer(sql, { log = console } = {}) {
     await sql`insert into stats (event, ref, n) values (${d.e}, ${ref}, 1) on conflict (day, event, ref) do update set n = stats.n + 1`;
     send(204, '');
   }
+  // Kat sayısı bildirimi: { id, lat, lon, floors }. Bina, ilk noktasının hücresinde (içe aktarılmış ya da önbellekteki OSM verisi)
+  // bulunmalı ve yüksekliği/kat sayısı OSM'de etiketsiz olmalı; yoksa 400. Bildiren: IP + günlük rastgele tuz özeti (saklanmayan tuz).
+  let salt = randomBytes(16), saltDay = new Date().toDateString();
+  const who = req => { const d = new Date().toDateString(); if (d !== saltDay) { saltDay = d; salt = randomBytes(16); }
+    const ip = String(req.headers['cf-connecting-ip'] ?? req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '').split(',')[0].trim();
+    return createHash('sha256').update(salt).update(ip).digest('base64url').slice(0, 16); };
+  async function floors(req, send) {
+    let body = '';
+    for await (const c of req) { body += c; if (body.length > 256) return send(413, { error: 'too large' }); }
+    let d; try { d = JSON.parse(body); } catch { return send(400, { error: 'bad json' }); }
+    const ok = Number.isSafeInteger(d?.id) && d.id > 0 && Number.isInteger(d.floors) && d.floors >= 1 && d.floors <= 80
+      && typeof d.lat === 'number' && typeof d.lon === 'number' && Math.abs(d.lat) <= 90 && Math.abs(d.lon) <= 180;
+    if (!ok) return send(400, { error: 'bad floors' });
+    const i = Math.floor(d.lat / CELL), j = Math.floor(d.lon / CELL);
+    const [row] = await sql`select data from osm_cells where i = ${i} and j = ${j} union all select data from cells where i = ${i} and j = ${j} limit 1`;
+    const e = row?.data?.find(x => x.id === d.id);
+    if (!e || !e.tags?.building || e.tags.height != null || e.tags['building:levels'] != null) return send(400, { error: 'unknown building' });
+    await sql`insert into floor_reports (id, who, floors) values (${d.id}, ${who(req)}, ${d.floors})
+      on conflict (id, who) do update set floors = excluded.floors, at = now()`;
+    send(204, '');
+  }
   const purge = () => Promise.all([
     sql`delete from feedback where at < now() - interval '730 days'`,
+    sql`delete from floor_reports where at < now() - interval '730 days'`,
     sql`delete from cells where fetched_at < now() - make_interval(days => ${TTL_DAYS})`,
     // her kaynak kendi süresiyle (arama 30 gün, adres 90 gün); önce en uzun süre kullanılıyordu, aramalar 400 gün kalıyordu
     ...Object.entries(KV_PREFIX).map(([src, pre]) => sql`delete from kv where key like ${pre + '%'} and fetched_at < now() - make_interval(days => ${TTL[src]})`),
