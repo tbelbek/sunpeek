@@ -28,6 +28,7 @@ steps:
       docker stop sunpeek-probe 2>$null  # Windows'ta bağlı dosyalar kilitli kalıyor
       robocopy . "$(D)" /E /NFL /NDL /NJH /NJS /XD .git e2e deploy docs .shots node_modules dist /XF screenshot-*.png .env azure-pipelines.yml README.md test.mjs
       if ($LASTEXITCODE -ge 8) { exit $LASTEXITCODE }; exit 0
+    errorActionPreference: continue  # PS 5: native stderr (docker/wrangler) Stop altında hata sayılıyor; çıkış kodlarını elle bakıyoruz
     displayName: Copy sources to server folder
 
   - powershell: |
@@ -40,6 +41,7 @@ steps:
         Start-Sleep 4
       }
       Write-Host "##vso[task.logissue type=error]Unhealthy: sunpeek=$s sunpeek-api=$a"; exit 1
+    errorActionPreference: continue
     displayName: Docker compose up + health
 
   # Statik sayfalar Cloudflare Workers'a; ESRI anahtarı .env'den okunur, loga yazılmaz
@@ -50,6 +52,7 @@ steps:
       if ($LASTEXITCODE) { exit $LASTEXITCODE }
       npx -y wrangler@4 deploy 2>&1 | Select-String -Pattern 'Uploaded|Current Version|ERROR'
       if ($LASTEXITCODE) { exit $LASTEXITCODE }
+    errorActionPreference: continue
     displayName: Deploy static to Cloudflare
     env:
       CLOUDFLARE_API_TOKEN: $(CLOUDFLARE_API_TOKEN)
