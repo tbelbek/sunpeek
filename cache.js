@@ -25,8 +25,8 @@ export async function cmany(keys, ttl) {
   keys.forEach((k, i) => { const r = got[i]; if (!r) missing.push(k); else (now - r.t < ttl ? fresh : stale).set(k, r.v); });
   return { fresh, stale, missing };
 }
-// Açılışta: maxAge'den eski kayıtları sil (hiçbir TTL bundan uzun değil)
-export const cprune = maxAge => tx('readwrite', s => {
+// Açılışta: maxAge'den eski kayıtları ve eskimiş sürüm öneklerini (drop) sil (hiçbir TTL maxAge'den uzun değil)
+export const cprune = (maxAge, drop = []) => tx('readwrite', s => {
   const lim = Date.now() - maxAge, q = s.openCursor();
-  q.onsuccess = () => { const c = q.result; if (!c) return; if (c.value.t < lim) c.delete(); c.continue(); };
+  q.onsuccess = () => { const c = q.result; if (!c) return; if (c.value.t < lim || drop.some(p => String(c.key).startsWith(p))) c.delete(); c.continue(); };
 }).catch(() => {});

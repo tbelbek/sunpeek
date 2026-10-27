@@ -466,13 +466,16 @@ function rainbow() {
 // taze olanlar önbellekten, eksikler tek bir Overpass kutu sorgusuyla. Yakında başka bir duvar seçilince ağ isteği olmaz.
 // Tazelik: 90 gün. Bayat hücre hemen kullanılır ve arka planda yenilenir; yenileme başarısızsa eskisi kalır.
 // Overpass hiç yanıt vermezse Overture Maps karoları (sürüm anahtarlı, ayrı saklanır; OSM hücrelerine karışmaz).
-const CELL = 0.005, BLD_TTL = 90 * DAY, BLD_R = 600, HEDGE = 8000;
+// Hücre önbelleği: sürüm önekli (oc2: GBA ve kullanıcı kat sayıları sunucu yanıtına eklendi; eski oc: kayıtları yeniden çekilir)
+// ve 14 gün (kullanıcıların uyuştuğu kat sayıları da bu sürede herkese ulaşır).
+const OC = 'oc2:';
+const CELL = 0.005, BLD_TTL = 14 * DAY, BLD_R = 600, HEDGE = 8000;
 let osmDownUntil = 0;
 const idb = { get: async k => (await cget(k))?.v, put: cput };
 function cellsAround(lat, lng) {
   const dLat = BLD_R / 111320, dLon = BLD_R / (111320 * Math.cos(lat * Math.PI / 180)), out = [];
   for (let i = Math.floor((lat - dLat) / CELL); i <= Math.floor((lat + dLat) / CELL); i++)
-    for (let j = Math.floor((lng - dLon) / CELL); j <= Math.floor((lng + dLon) / CELL); j++) out.push(`oc:${i}:${j}`);
+    for (let j = Math.floor((lng - dLon) / CELL); j <= Math.floor((lng + dLon) / CELL); j++) out.push(`${OC}${i}:${j}`);
   return out;
 }
 async function fetchCells(keys, quiet = false) { // eksik/bayat hücreleri kapsayan tek kutu; her öğe ilk noktasının hücresine yazılır
@@ -480,7 +483,7 @@ async function fetchCells(keys, quiet = false) { // eksik/bayat hücreleri kapsa
   const box = [Math.min(...is) * CELL, Math.min(...js) * CELL, (Math.max(...is) + 1) * CELL, (Math.max(...js) + 1) * CELL];
   const el = await fetchOverpass(box, quiet), by = new Map(keys.map(k => [k, []]));
   for (const e of el) { const g = e.geometry?.[0] ?? e.members?.find(m => m.geometry)?.geometry?.[0]; if (!g) continue;
-    by.get(`oc:${Math.floor(g.lat / CELL)}:${Math.floor(g.lon / CELL)}`)?.push(e); }
+    by.get(`${OC}${Math.floor(g.lat / CELL)}:${Math.floor(g.lon / CELL)}`)?.push(e); }
   await Promise.all([...by].map(([k, v]) => cput(k, v)));
   return by;
 }
@@ -512,10 +515,10 @@ async function fetchArea(lat, lng) {
 // quiet: gösterge yanmaz ama yedek yol açık (yarışta: göstergeyi yarışın kendisi tutar, kaybeden istek sessiz sürer).
 async function viaServer(keys, bg = false, quiet = bg) {
   let r;
-  try { r = await sfetch('sunpeek', `/api/cells?k=${keys.map(k => k.slice(3)).join(',')}`, { signal: AbortSignal.timeout(15000), bg: quiet }); } catch { r = null; }
+  try { r = await sfetch('sunpeek', `/api/cells?k=${keys.map(k => k.slice(OC.length)).join(',')}`, { signal: AbortSignal.timeout(15000), bg: quiet }); } catch { r = null; }
   if (!r?.ok) { if (bg) throw new Error('server'); return fetchCells(keys, quiet); }
   const { cells = {}, missing = [] } = await r.json(), by = new Map();
-  for (const [ij, v] of Object.entries(cells)) if (Array.isArray(v)) { by.set('oc:' + ij, v); cput('oc:' + ij, v); }
+  for (const [ij, v] of Object.entries(cells)) if (Array.isArray(v)) { by.set(OC + ij, v); cput(OC + ij, v); }
   if (missing.length) throw new Error('buildings: server could not fetch ' + missing.length + ' cells');
   return by;
 }
@@ -1213,7 +1216,7 @@ else {
   // izin gerektirmeyen cihazlarda (Android) pusula kendiliğinden açılır; iOS'ta üstteki oka dokunulur
   if (matchMedia('(pointer: coarse)').matches && window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission !== 'function') requestCompass();
 }
-cprune(400 * DAY); // hiçbir TTL bundan uzun değil
+cprune(400 * DAY, ['oc:']); // hiçbir TTL bundan uzun değil; oc: = oc2: öncesi hücre önbelleği
 try { Object.keys(localStorage).filter(k => /^(ov|ovt|zg|hz|irr|tz):/.test(k)).forEach(k => localStorage.removeItem(k)); } catch {} // eski localStorage önbellekleri
 if (new URLSearchParams(location.search).has('smoke')) { setPoint(51.4779, -0.0015, false); $('time').value = 720; draw(); } // duman testi: çizim de hatasız çalışmalı
 document.documentElement.dataset.ready = '1'; // duman testi (deploy): uygulama sonuna kadar hatasız yüklendi
