@@ -91,6 +91,7 @@ const q = (a, p) => { const s = [...a].sort((x, y) => x - y); return s[Math.min(
 const els = await osm();
 const ref = city === 'ams' ? await bag() : lod2(arg2 ?? '.');
 const L = localize(els, la0, lo0, null), all = L.buildings.concat(L.own), M = match(all, ref);
+const noGbaAll = () => els.map(e => e.tags?.['gba:height'] == null ? e : { ...e, tags: Object.fromEntries(Object.entries(e.tags).filter(([k]) => k !== 'gba:height')) });
 console.log(`${city}: OSM ${all.length} bina, referans ${ref.length}, eşleşen ${M.size}`);
 
 // 1) kaynak başına yükseklik: oran = referans / model; pay önerisi = [1 − p10, p90 − 1]; mevcut HB içinde kalan oran
@@ -114,7 +115,8 @@ console.table(Object.fromEntries(Object.entries(cmp).map(([k, c]) => [k, { n: c.
 
 // 2) sonuç: rastgele duvar, 2. kat, ekinoks ve kış; gerçek = referans yükseklikleriyle hesap
 const N = +(city === 'ams' ? arg2 : process.argv[4]) || 80;
-const truthEls = els.map(e => { const h = M.get(e.id); if (h == null) return e; const tags = { ...e.tags, height: h.toFixed(1) }; delete tags['building:levels']; return { ...e, tags }; });
+// Gerçek: eşleşen binalar referans yüksekliğiyle; eşleşmeyenler GBA'sız taban değerle (GBA'lı ve GBA'sız model aynı, GBA'dan bağımsız gerçekle karşılaştırılsın)
+const truthEls = noGbaAll().map(e => { const h = M.get(e.id); if (h == null) return e; const tags = { ...e.tags, height: h.toFixed(1) }; delete tags['building:levels']; return { ...e, tags }; });
 let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 const res = [];
 for (let n = 0; res.length < N && n < N * 20; n++) {

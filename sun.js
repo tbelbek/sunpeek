@@ -72,7 +72,10 @@ function heightOnly(t) {
   const ul = num(t['sp:levels']);
   if (!isNaN(ul) && ul >= 1 && ul <= 80) return { h: ul * STOREY + ROOF, levels: ul, storey: STOREY, guessed: false, src: 'user' };
   const g = num(t['gba:height']);
-  if (!isNaN(g) && g >= 2) return { h: g, levels: null, storey: STOREY, guessed: false, src: 'gba' };
+  // GBA tahmini sayılır (guessed): komşu ortancası varsa onun yerine geçmez, güvende ölçülmüş yükseklik gibi sayılmaz. Doğrulama
+  // (2026-10-27, 5 alan, tools/validate/ref.mjs): GBA her yerde öncelikli olunca duvar hatası toplamı 3,18 → 4,07 sa kötüleşti;
+  // ortanca öncelikliyken 3,27 (Münih merkez 0,64 → 0,55 iyi, Rotterdam 0,67 → 0,83 kötü).
+  if (!isNaN(g) && g >= 2) return { h: g, levels: null, storey: STOREY, guessed: true, src: 'gba' };
   const def = { garage: 3, garages: 3, shed: 3, carport: 3, roof: 3, hut: 3, house: 6, detached: 6, semidetached_house: 6, terrace: 6, apartments: 12, residential: 12 };
   return { h: Object.hasOwn(def, t.building) ? def[t.building] : 9, levels: null, storey: STOREY, guessed: true, src: 'guess' }; // hasOwn: "constructor" gibi etiketler prototipe çözülmesin
 }

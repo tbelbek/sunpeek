@@ -1,6 +1,7 @@
 // GBA yüksekliklerini OSM kimliği tutmayan alanlara mekânsal eşleştirmeyle ekler (ör. Sevilla, Lizbon: GBA orada OSM yerine
 // Microsoft bina tabanlarını kullanmış). GBA poligonu (GBA.ODbLPolygon, EPSG:3857, satır başına bir özellik) bizim etiketsiz OSM
-// binamızın içine düşüyor ve alanları 0,5–2 kat içindeyse, LoD1'deki yüksekliği ("ms<poligon kimliği>") o binaya verilir.
+// binamızın içine düşüyor ve alanları 0,5–2 kat içindeyse, LoD1'deki yüksekliği (anahtar <kaynak><kimlik><ülke>, ör. msSpain_…ESP,
+// ours285SOVESP) o binaya verilir. Poligon dosyası: GBA.ODbLPolygon (ms, osm) ya da GBA.LoD1/Polygon (ours, google).
 // Yalnız gba tablosunda henüz satırı olmayan binalar; mevcut kimlik eşleşmelerine dokunulmaz.
 //   docker compose run --rm --no-deps -v D:/gba:/gba api node gba-spatial.mjs /gba/poly/<pafta>.geojson /gba/<pafta>.json Seville Lisbon
 import fs from 'node:fs';
@@ -36,7 +37,7 @@ console.log(`GBA'sız etiketsiz bina: ${ours.length}`);
 const want = new Map(), best = new Map(); let seen = 0;
 for await (const l of readline.createInterface({ input: fs.createReadStream(polyFile), crlfDelay: Infinity })) {
   if (!l.startsWith('{ "type": "Feature"')) continue;
-  const id = /"id": "([^"]+)"/.exec(l)?.[1], c = /"coordinates": \[ \[ (.*?) \] \] \}/.exec(l)?.[1];
+  const id = /"id": "([^"]+)"/.exec(l)?.[1], src = /"source": "([^"]+)"/.exec(l)?.[1] ?? '', reg = /"region": "([A-Z]{3})"/.exec(l)?.[1] ?? '', c = /"coordinates": \[ \[ (.*?) \] \] \}/.exec(l)?.[1];
   if (!id || !c) continue;
   const ring = [...c.matchAll(/\[ (-?[\d.]+), (-?[\d.]+) \]/g)].map(m => toLL(+m[1], +m[2]));
   const cla = ring.reduce((s, p) => s + p[0], 0) / ring.length, clo = ring.reduce((s, p) => s + p[1], 0) / ring.length;
@@ -45,14 +46,14 @@ for await (const l of readline.createInterface({ input: fs.createReadStream(poly
   for (const o of grid.get(gk(cla, clo)) ?? []) {
     if (cla < o.la0 || cla > o.la1 || clo < o.lo0 || clo > o.lo1 || !pip(cla, clo, o.g)) continue;
     const r = a / o.a; if (r < 0.5 || r > 2) continue;
-    const d = Math.abs(Math.log(r)); if (!best.has(o.id) || d < best.get(o.id).d) { best.set(o.id, { d, key: 'ms' + id }); }
+    const d = Math.abs(Math.log(r)); if (!best.has(o.id) || d < best.get(o.id).d) { best.set(o.id, { d, key: src + id + reg }); }
   }
 }
 for (const [oid, { key }] of best) want.set(key, oid);
 console.log(`alandaki GBA poligonu: ${seen}, eşleşen bina: ${want.size}`);
 
 // 3) LoD1 yükseklikleri: yalnız eşleşen ms<kimlik> anahtarları
-const re = /"(ms[A-Za-z]+_\d+_\d+)": \{"height": (-?[\d.eE+-]+), "var": (-?[\d.eE+-]+)\}/g, out = [];
+const re = /"([^"\s]{3,80})": \{"height": (-?[\d.eE+-]+), "var": (-?[\d.eE+-]+)\}/g, out = [];
 let tail = '';
 for await (const chunk of fs.createReadStream(lodFile, { encoding: 'utf8', highWaterMark: 1 << 22 })) {
   const s = tail + chunk; let m, last = 0; re.lastIndex = 0;
