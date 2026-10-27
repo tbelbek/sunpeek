@@ -50,8 +50,13 @@ steps:
       if (Test-Path dist) { Remove-Item -Recurse -Force dist }
       docker buildx build -q --target static --build-arg "ESRI_KEY=$esri" -o dist . | Out-Null
       if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      npx -y wrangler@4 deploy 2>&1 | Select-String -Pattern 'Uploaded|Current Version|ERROR'
-      if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      # Cloudflare ara sıra "unknown error [code: 10013]" veriyor (geçici): 3 deneme
+      foreach ($n in 1..3) {
+        npx -y wrangler@4 deploy 2>&1 | Select-String -Pattern 'Uploaded|Current Version|ERROR|code:'
+        if (-not $LASTEXITCODE) { break }
+        if ($n -eq 3) { exit $LASTEXITCODE }
+        Write-Host "wrangler deploy failed, retry $n"; Start-Sleep 20
+      }
     errorActionPreference: continue
     displayName: Deploy static to Cloudflare
     env:
